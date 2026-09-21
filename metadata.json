@@ -1,0 +1,6 @@
+{
+  "name": "NWA Architects Studio",
+  "description": "Architectural portfolio and management portal for NWA Architects featuring project management, recruitment pipeline, application reviews, and studio settings.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
