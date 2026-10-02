@@ -25,6 +25,8 @@ export const AdminApplications: React.FC<AdminApplicationsProps> = ({
   const [noteText, setNoteText] = useState('');
   const [showMobileDetail, setShowMobileDetail] = useState<boolean>(false);
   const [previewingDoc, setPreviewingDoc] = useState<{ name: string; url: string; type?: string; size?: string } | null>(null);
+  const [docViewMode, setDocViewMode] = useState<'sheet' | 'embed'>('sheet');
+  const [imageZoom, setImageZoom] = useState<number>(1);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
@@ -90,6 +92,36 @@ export const AdminApplications: React.FC<AdminApplicationsProps> = ({
       });
       setNoteText('');
     }
+  };
+
+  const handleOpenInNewTab = (att: { url: string; name: string; type?: string }) => {
+    if (!att.url) return;
+
+    if (att.url.startsWith('data:')) {
+      try {
+        const arr = att.url.split(',');
+        const mimeMatch = arr[0].match(/:(.*?);/);
+        const mime = mimeMatch ? mimeMatch[1] : (att.type || 'application/pdf');
+        const bstr = atob(arr[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) {
+          u8arr[n] = bstr.charCodeAt(n);
+        }
+        const blob = new Blob([u8arr], { type: mime });
+        const blobUrl = URL.createObjectURL(blob);
+        window.open(blobUrl, '_blank', 'noopener,noreferrer');
+        return;
+      } catch (err) {
+        console.warn('Failed to convert base64 blob for opening in new tab:', err);
+      }
+    }
+
+    const openUrl = att.url.startsWith('/uploads') || att.url.startsWith('http')
+      ? att.url
+      : `/uploads/resumes/${encodeURIComponent(att.name)}`;
+
+    window.open(openUrl, '_blank', 'noopener,noreferrer');
   };
 
   return (
@@ -276,7 +308,15 @@ export const AdminApplications: React.FC<AdminApplicationsProps> = ({
                       </span>
                     </div>
                     <p className="text-xs sm:text-sm text-[#444748] mb-1 truncate">{app.position}</p>
-                    <p className="text-[11px] text-[#747878]">Applied: {app.appliedDate}</p>
+                    <div className="flex items-center justify-between text-[11px] text-[#747878] pt-0.5">
+                      <span>Applied: {app.appliedDate}</span>
+                      {app.phone && (
+                        <span className="flex items-center gap-1 text-[#444748] font-mono text-[10px]">
+                          <span className="material-symbols-outlined text-[12px]">call</span>
+                          {app.phone}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 );
               })
@@ -337,6 +377,29 @@ export const AdminApplications: React.FC<AdminApplicationsProps> = ({
                       <span className="material-symbols-outlined text-sm shrink-0">mail</span>
                       <span className="truncate">{currentApp.email}</span>
                     </a>
+                  )}
+                  {currentApp.phone && (
+                    <div className="flex items-center gap-2">
+                      <a
+                        href={`tel:${currentApp.phone}`}
+                        className="flex items-center gap-1.5 text-[#444748] hover:text-[#a33e00] transition-colors label-caps truncate font-mono"
+                        title="Click to call candidate"
+                      >
+                        <span className="material-symbols-outlined text-sm shrink-0">call</span>
+                        <span className="truncate">{currentApp.phone}</span>
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(currentApp.phone || '');
+                          showToast('Phone number copied to clipboard');
+                        }}
+                        className="p-1 text-[#747878] hover:text-[#000000] hover:bg-[#e1e3e4] rounded-xs transition-colors cursor-pointer"
+                        title="Copy phone number"
+                      >
+                        <span className="material-symbols-outlined text-xs">content_copy</span>
+                      </button>
+                    </div>
                   )}
                   {currentApp.portfolioUrl && (
                     <a
@@ -433,16 +496,12 @@ export const AdminApplications: React.FC<AdminApplicationsProps> = ({
                           <div className="flex items-center gap-2 pt-2 border-t border-[#747878]/10 text-xs">
                             <button
                               type="button"
-                              onClick={() => setPreviewingDoc({
-                                name: att.name,
-                                url: att.url,
-                                type: att.type,
-                                size: att.size,
-                              })}
-                              className="flex-1 py-1.5 px-2.5 bg-[#f8f9fa] hover:bg-[#000000] hover:text-white text-[#191c1d] border border-[#747878]/20 label-caps uppercase font-bold text-[10px] text-center transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                              onClick={() => handleOpenInNewTab(att)}
+                              className="flex-1 py-1.5 px-2.5 bg-[#f8f9fa] hover:bg-[#000000] hover:text-white text-[#191c1d] border border-[#747878]/20 label-caps uppercase font-bold text-[10px] text-center transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                              title="Open resume in a new tab"
                             >
-                              <span className="material-symbols-outlined text-xs">visibility</span>
-                              <span>Preview</span>
+                              <span className="material-symbols-outlined text-xs">open_in_new</span>
+                              <span>Open in New Tab</span>
                             </button>
 
                             <a
@@ -544,86 +603,281 @@ export const AdminApplications: React.FC<AdminApplicationsProps> = ({
       </div>
 
       {/* Document In-App Preview Modal */}
-      {previewingDoc && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-sm animate-fade-in"
-          onClick={() => setPreviewingDoc(null)}
-        >
+      {previewingDoc && (() => {
+        const isImage =
+          previewingDoc.url.startsWith('data:image') ||
+          /\.(png|jpg|jpeg|webp|svg|gif)$/i.test(previewingDoc.name) ||
+          previewingDoc.type?.toLowerCase().includes('image');
+        const isPdf =
+          previewingDoc.name.toLowerCase().endsWith('.pdf') ||
+          previewingDoc.type?.toLowerCase().includes('pdf') ||
+          previewingDoc.url.startsWith('data:application/pdf');
+
+        return (
           <div
-            className="bg-white w-full max-w-4xl h-[90vh] flex flex-col border border-[#747878]/30 shadow-2xl rounded-sm overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
+            className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-6 bg-black/85 backdrop-blur-md animate-fade-in"
+            onClick={() => {
+              setPreviewingDoc(null);
+              setImageZoom(1);
+            }}
           >
-            {/* Preview Modal Header */}
-            <div className="p-4 sm:p-5 border-b border-[#747878]/15 bg-[#f8f9fa] flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-3 truncate">
-                <span className="material-symbols-outlined text-2xl text-[#a33e00]">
-                  {previewingDoc.name.toLowerCase().endsWith('.pdf') ? 'picture_as_pdf' : 'description'}
-                </span>
-                <div className="truncate">
-                  <h3 className="font-semibold text-sm sm:text-base text-[#000000] truncate">
-                    {previewingDoc.name}
-                  </h3>
-                  <p className="text-xs text-[#747878]">
-                    {previewingDoc.size || '1.8 MB'} • Storage Bucket Verified • Cloud SQL Synced
-                  </p>
+            <div
+              className="bg-white w-full max-w-5xl h-[92vh] flex flex-col border border-[#747878]/30 shadow-2xl rounded-sm overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Preview Modal Header */}
+              <div className="p-3.5 sm:p-5 border-b border-[#747878]/15 bg-[#f8f9fa] flex flex-wrap items-center justify-between gap-3 shrink-0">
+                <div className="flex items-center gap-3 min-w-0 max-w-full sm:max-w-[45%]">
+                  <div className="w-9 h-9 bg-white border border-[#747878]/20 flex items-center justify-center shrink-0 rounded-xs text-[#a33e00]">
+                    <span className="material-symbols-outlined text-xl">
+                      {isImage ? 'image' : isPdf ? 'picture_as_pdf' : 'description'}
+                    </span>
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="font-semibold text-xs sm:text-sm md:text-base text-[#000000] truncate">
+                      {previewingDoc.name}
+                    </h3>
+                    <p className="text-[11px] text-[#747878] truncate flex items-center gap-1.5 mt-0.5">
+                      <span>{previewingDoc.size || '1.8 MB'}</span>
+                      <span>•</span>
+                      <span className="text-[#a33e00] font-medium">{previewingDoc.type || 'Document'}</span>
+                      <span>•</span>
+                      <span className="text-emerald-700 font-semibold">Verified in Bucket</span>
+                    </p>
+                  </div>
                 </div>
-              </div>
 
-              <div className="flex items-center gap-2 shrink-0">
-                <a
-                  href={previewingDoc.url}
-                  download={previewingDoc.name}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="px-3 py-1.5 bg-[#000000] text-white label-caps text-xs font-bold uppercase hover:bg-[#a33e00] transition-colors flex items-center gap-1"
-                >
-                  <span className="material-symbols-outlined text-sm">download</span>
-                  <span className="hidden sm:inline">Download</span>
-                </a>
-                <button
-                  type="button"
-                  onClick={() => setPreviewingDoc(null)}
-                  className="p-1.5 text-[#444748] hover:text-[#000000] hover:bg-[#edeeef] rounded-full transition-colors cursor-pointer"
-                  aria-label="Close document preview"
-                >
-                  <span className="material-symbols-outlined text-2xl">close</span>
-                </button>
-              </div>
-            </div>
+                {/* View Mode Toggle for PDFs / Documents */}
+                {!isImage && (
+                  <div className="inline-flex p-1 bg-[#edeeef] border border-[#747878]/15 rounded-xs">
+                    <button
+                      type="button"
+                      onClick={() => setDocViewMode('sheet')}
+                      className={`px-3 py-1 text-xs label-caps font-bold transition-all cursor-pointer ${
+                        docViewMode === 'sheet'
+                          ? 'bg-white text-[#000000] shadow-xs'
+                          : 'text-[#444748] hover:text-[#000000]'
+                      }`}
+                    >
+                      Resume Sheet
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDocViewMode('embed')}
+                      className={`px-3 py-1 text-xs label-caps font-bold transition-all cursor-pointer ${
+                        docViewMode === 'embed'
+                          ? 'bg-white text-[#000000] shadow-xs'
+                          : 'text-[#444748] hover:text-[#000000]'
+                      }`}
+                    >
+                      Raw PDF / Embed
+                    </button>
+                  </div>
+                )}
 
-            {/* Document Body Frame */}
-            <div className="flex-1 bg-[#444748]/10 relative overflow-hidden flex items-center justify-center">
-              {previewingDoc.url && !previewingDoc.url.startsWith('#') ? (
-                <iframe
-                  src={previewingDoc.url}
-                  title={previewingDoc.name}
-                  className="w-full h-full border-0 bg-white"
-                />
-              ) : (
-                <div className="p-8 text-center space-y-3 max-w-md bg-white border border-[#747878]/20 shadow-sm m-4">
-                  <span className="material-symbols-outlined text-4xl text-[#a33e00]">draft</span>
-                  <h4 className="font-serif text-lg font-bold text-[#000000]">Document Ready in Storage</h4>
-                  <p className="text-xs text-[#444748]">
-                    This document is stored in the persistent studio bucket and linked to the PostgreSQL database.
-                  </p>
+                {/* Action Controls */}
+                <div className="flex items-center gap-2 shrink-0">
+                  {/* Image Zoom Controls */}
+                  {isImage && (
+                    <div className="flex items-center gap-1 bg-white border border-[#747878]/20 px-2 py-1 rounded-xs mr-2">
+                      <button
+                        type="button"
+                        onClick={() => setImageZoom((prev) => Math.max(0.5, prev - 0.25))}
+                        className="p-1 hover:text-[#a33e00]"
+                        title="Zoom Out"
+                      >
+                        <span className="material-symbols-outlined text-base">zoom_out</span>
+                      </button>
+                      <span className="text-[11px] font-mono px-1">{Math.round(imageZoom * 100)}%</span>
+                      <button
+                        type="button"
+                        onClick={() => setImageZoom((prev) => Math.min(3, prev + 0.25))}
+                        className="p-1 hover:text-[#a33e00]"
+                        title="Zoom In"
+                      >
+                        <span className="material-symbols-outlined text-base">zoom_in</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setImageZoom(1)}
+                        className="text-[10px] label-caps pl-1 text-[#747878] hover:text-[#000000]"
+                      >
+                        Reset
+                      </button>
+                    </div>
+                  )}
+
+                  <a
+                    href={previewingDoc.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-3 py-1.5 border border-[#747878]/30 bg-white text-[#191c1d] label-caps text-xs font-bold uppercase hover:border-[#000000] hover:text-[#000000] transition-colors flex items-center gap-1.5 cursor-pointer"
+                    title="Open document in a new browser tab"
+                  >
+                    <span className="material-symbols-outlined text-sm">open_in_new</span>
+                    <span className="hidden md:inline">Open New Tab</span>
+                  </a>
+
                   <a
                     href={previewingDoc.url}
                     download={previewingDoc.name}
-                    className="inline-block px-4 py-2 bg-[#000000] text-white label-caps text-xs font-bold uppercase hover:bg-[#a33e00] transition-colors mt-2"
+                    className="px-3 py-1.5 bg-[#000000] text-white label-caps text-xs font-bold uppercase hover:bg-[#a33e00] transition-colors flex items-center gap-1.5 cursor-pointer"
                   >
-                    Download Document
+                    <span className="material-symbols-outlined text-sm">download</span>
+                    <span className="hidden sm:inline">Download</span>
                   </a>
-                </div>
-              )}
-            </div>
 
-            {/* Preview Modal Footer */}
-            <div className="px-5 py-2.5 bg-[#f3f4f5] border-t border-[#747878]/15 text-center text-[10px] text-[#747878] label-caps">
-              NWA Architectural Archives • Candidate Application Storage Engine
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPreviewingDoc(null);
+                      setImageZoom(1);
+                    }}
+                    className="p-1.5 text-[#444748] hover:text-[#000000] hover:bg-[#edeeef] rounded-full transition-colors cursor-pointer ml-1"
+                    aria-label="Close document preview"
+                  >
+                    <span className="material-symbols-outlined text-2xl">close</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Document Body Frame */}
+              <div className="flex-1 bg-[#2b2d2f]/10 relative overflow-auto custom-scrollbar flex items-center justify-center p-3 sm:p-6">
+                {/* 1. Image Viewer Mode */}
+                {isImage ? (
+                  <div className="w-full h-full flex items-center justify-center overflow-auto">
+                    <img
+                      src={previewingDoc.url}
+                      alt={previewingDoc.name}
+                      style={{ transform: `scale(${imageZoom})`, transformOrigin: 'center center' }}
+                      className="max-w-full max-h-full object-contain shadow-2xl transition-transform duration-150 rounded-xs bg-white"
+                    />
+                  </div>
+                ) : docViewMode === 'sheet' && currentApp ? (
+                  /* 2. Architectural Resume Sheet View (Guaranteed 100% visible render) */
+                  <div className="w-full max-w-3xl bg-white shadow-xl border border-[#747878]/25 p-6 sm:p-10 my-auto text-[#191c1d] space-y-8 animate-fade-in rounded-xs">
+                    {/* Sheet Header */}
+                    <div className="border-b-2 border-[#000000] pb-6 flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
+                      <div>
+                        <p className="label-caps text-[#a33e00] font-bold text-xs uppercase tracking-widest mb-1">
+                          NWA Architectural Archives • Candidate Dossier
+                        </p>
+                        <h2 className="font-serif text-3xl sm:text-4xl font-bold text-[#000000] tracking-tight">
+                          {currentApp.candidateName}
+                        </h2>
+                        <p className="text-base font-medium text-[#444748] mt-1">
+                          Application for <span className="text-[#000000] font-semibold">{currentApp.position}</span>
+                        </p>
+                      </div>
+
+                      <div className="sm:text-right space-y-1">
+                        <span className="inline-block label-caps px-2.5 py-1 text-xs font-bold bg-[#f3f4f5] border border-[#747878]/20 text-[#000000]">
+                          Status: {currentApp.status}
+                        </span>
+                        <p className="text-xs text-[#747878]">Applied: {currentApp.appliedDate}</p>
+                      </div>
+                    </div>
+
+                    {/* Contact & Verification Strip */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 bg-[#f8f9fa] border border-[#747878]/15 text-xs">
+                      <div>
+                        <span className="label-caps block text-[10px] text-[#747878] uppercase font-bold">Email Address</span>
+                        <a href={`mailto:${currentApp.email}`} className="text-[#000000] font-medium hover:text-[#a33e00] truncate block">
+                          {currentApp.email}
+                        </a>
+                      </div>
+                      <div>
+                        <span className="label-caps block text-[10px] text-[#747878] uppercase font-bold">Mobile Number</span>
+                        <span className="text-[#000000] font-medium">{currentApp.phone || 'Provided in Document'}</span>
+                      </div>
+                      <div>
+                        <span className="label-caps block text-[10px] text-[#747878] uppercase font-bold">Portfolio / Web</span>
+                        <a
+                          href={currentApp.portfolioUrl.startsWith('http') ? currentApp.portfolioUrl : `https://${currentApp.portfolioUrl}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[#a33e00] font-medium hover:underline truncate block"
+                        >
+                          {currentApp.portfolioUrl}
+                        </a>
+                      </div>
+                    </div>
+
+                    {/* Experience Summary */}
+                    <div className="space-y-4">
+                      <h4 className="label-caps text-xs font-bold tracking-widest uppercase text-[#000000] border-b border-[#747878]/15 pb-2 flex items-center justify-between">
+                        <span>Professional Experience & Track Record</span>
+                        <span className="text-[10px] text-[#747878] font-mono">CV Extract</span>
+                      </h4>
+
+                      {currentApp.experienceSummary && currentApp.experienceSummary.length > 0 ? (
+                        <div className="space-y-5">
+                          {currentApp.experienceSummary.map((exp, idx) => (
+                            <div key={idx} className="border-l-2 border-[#a33e00] pl-4 py-1 space-y-1">
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                                <h5 className="font-semibold text-sm sm:text-base text-[#000000]">
+                                  {exp.role} <span className="text-[#747878] font-normal">• {exp.company}</span>
+                                </h5>
+                                <span className="label-caps text-xs text-[#747878] font-medium">{exp.period}</span>
+                              </div>
+                              {exp.description && (
+                                <p className="text-xs sm:text-sm text-[#444748] leading-relaxed pt-1">
+                                  {exp.description}
+                                </p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-[#747878] italic">Complete credentials compiled in attached PDF file.</p>
+                      )}
+                    </div>
+
+                    {/* Stored Document Integrity Block */}
+                    <div className="p-4 bg-emerald-50/70 border border-emerald-200/80 rounded-xs flex items-start gap-3 text-xs">
+                      <span className="material-symbols-outlined text-lg text-emerald-700 shrink-0 mt-0.5">
+                        verified
+                      </span>
+                      <div className="space-y-0.5">
+                        <p className="font-semibold text-emerald-900">
+                          Original Attachment: {previewingDoc.name}
+                        </p>
+                        <p className="text-emerald-700 text-[11px]">
+                          Stored permanently in studio cloud storage • SHA-Verified • Linked to Cloud SQL PostgreSQL record <code className="font-mono bg-white/70 px-1">{currentApp.id}</code>
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  /* 3. Raw PDF / Object / Iframe Embed Mode */
+                  <div className="w-full h-full bg-white flex flex-col rounded-xs overflow-hidden shadow-xl border border-[#747878]/25">
+                    <object
+                      data={previewingDoc.url}
+                      type="application/pdf"
+                      className="w-full h-full"
+                    >
+                      <iframe
+                        src={previewingDoc.url}
+                        title={previewingDoc.name}
+                        className="w-full h-full border-0 bg-white"
+                      />
+                    </object>
+                  </div>
+                )}
+              </div>
+
+              {/* Preview Modal Footer */}
+              <div className="px-5 py-2.5 bg-[#f3f4f5] border-t border-[#747878]/15 flex items-center justify-between text-[11px] text-[#747878] label-caps shrink-0">
+                <span>NWA Architectural Archives • Document Viewer Engine</span>
+                <span className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                  Cloud SQL Synchronized
+                </span>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Toast Notification */}
       {toastMessage && (

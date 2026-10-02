@@ -15,11 +15,35 @@ export async function getAllProjects(): Promise<Project[]> {
       description: r.description,
       imageUrl: r.imageUrl,
       status: r.status as Project['status'],
+      isFeatured: Boolean(r.isFeatured),
       lastEdited: r.lastEdited || undefined,
       editedBy: r.editedBy || undefined,
     }));
   } catch (error) {
     console.error('Database getAllProjects failed:', error);
+    throw new Error('Database query failed. Please try again later.', { cause: error });
+  }
+}
+
+export async function getProjectById(id: string): Promise<Project | null> {
+  try {
+    const [row] = await db.select().from(projects).where(eq(projects.id, id)).limit(1);
+    if (!row) return null;
+    return {
+      id: row.id,
+      title: row.title,
+      category: row.category as Project['category'],
+      location: row.location,
+      year: row.year,
+      description: row.description,
+      imageUrl: row.imageUrl,
+      status: row.status as Project['status'],
+      isFeatured: Boolean(row.isFeatured),
+      lastEdited: row.lastEdited || undefined,
+      editedBy: row.editedBy || undefined,
+    };
+  } catch (error) {
+    console.error(`Database getProjectById failed for ${id}:`, error);
     throw new Error('Database query failed. Please try again later.', { cause: error });
   }
 }
@@ -33,6 +57,7 @@ export interface CreateProjectInput {
   description: string;
   imageUrl: string;
   status?: Project['status'];
+  isFeatured?: boolean;
   lastEdited?: string;
   editedBy?: string;
 }
@@ -49,6 +74,7 @@ export async function createProject(projectData: CreateProjectInput): Promise<Pr
       description: projectData.description,
       imageUrl: projectData.imageUrl,
       status: projectData.status || 'In Progress',
+      isFeatured: Boolean(projectData.isFeatured),
       lastEdited: projectData.lastEdited || 'Just now',
       editedBy: projectData.editedBy || 'Admin',
     }).returning();
@@ -62,6 +88,7 @@ export async function createProject(projectData: CreateProjectInput): Promise<Pr
       description: inserted.description,
       imageUrl: inserted.imageUrl,
       status: inserted.status as Project['status'],
+      isFeatured: Boolean(inserted.isFeatured),
       lastEdited: inserted.lastEdited || undefined,
       editedBy: inserted.editedBy || undefined,
     };
@@ -85,6 +112,7 @@ export async function updateProject(id: string, updates: Partial<Project>): Prom
     if (updates.description !== undefined) updateValues.description = updates.description;
     if (updates.imageUrl !== undefined) updateValues.imageUrl = updates.imageUrl;
     if (updates.status !== undefined) updateValues.status = updates.status;
+    if (updates.isFeatured !== undefined) updateValues.isFeatured = Boolean(updates.isFeatured);
 
     const [updated] = await db.update(projects)
       .set(updateValues)
@@ -102,6 +130,7 @@ export async function updateProject(id: string, updates: Partial<Project>): Prom
       description: updated.description,
       imageUrl: updated.imageUrl,
       status: updated.status as Project['status'],
+      isFeatured: Boolean(updated.isFeatured),
       lastEdited: updated.lastEdited || undefined,
       editedBy: updated.editedBy || undefined,
     };

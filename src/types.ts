@@ -7,8 +7,9 @@ export interface Project {
   description: string;
   imageUrl: string;
   status: 'In Progress' | 'Concept Phase' | 'Completed';
-  lastEdited: string;
-  editedBy: string;
+  isFeatured?: boolean;
+  lastEdited?: string;
+  editedBy?: string;
 }
 
 export interface JobPosting {
@@ -29,6 +30,7 @@ export interface Application {
   appliedDate: string;
   status: 'Reviewing' | 'New' | 'Rejected' | 'Interview' | 'Hired';
   email: string;
+  phone?: string;
   portfolioUrl: string;
   avatarUrl?: string;
   experienceSummary: Array<{
@@ -52,8 +54,10 @@ export interface ContactInquiry {
   id: string;
   name: string;
   email: string;
+  phone?: string;
   projectType: string;
   message: string;
+  status: 'New' | 'Contacted';
   createdAt: string;
 }
 

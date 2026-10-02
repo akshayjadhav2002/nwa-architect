@@ -2,13 +2,15 @@ import express from "express";
 import path from "path";
 import fs from "fs";
 import { createServer as createViteServer } from "vite";
-import { getAllProjects, createProject, updateProject, deleteProject } from "./src/db/projects.ts";
+import { getAllProjects, getProjectById, createProject, updateProject, deleteProject } from "./src/db/projects.ts";
 import { getAllJobs, createJob, updateJob, deleteJob } from "./src/db/jobs.ts";
-import { getAllApplications, createApplication, updateApplication, deleteApplication } from "./src/db/applications.ts";
-import { getAllInquiries, createInquiry, deleteInquiry } from "./src/db/inquiries.ts";
+import { getAllApplications, getApplicationById, createApplication, updateApplication, deleteApplication } from "./src/db/applications.ts";
+import { getAllInquiries, createInquiry, updateInquiry, deleteInquiry } from "./src/db/inquiries.ts";
 import { getSettings, updateSettings } from "./src/db/settings.ts";
 import { getOrCreateUser } from "./src/db/users.ts";
 import { seedDatabaseIfEmpty } from "./src/db/seed.ts";
+import { uploadToStorage, deleteFromStorage, getStorageStatus, isVercelBlobConfigured } from "./src/lib/blobStorage.ts";
+import { sendInquiryNotification } from "./src/lib/mailService.ts";
 
 async function startServer() {
   const app = express();
@@ -28,60 +30,64 @@ async function startServer() {
     fs.mkdirSync(resumesDir, { recursive: true });
   }
 
-  // Generate standard minimal PDF buffer for sample architectural candidates
+  // Generate standard valid PDF buffer for sample architectural candidates
   const generateSamplePdf = (candidateName: string, role: string, details: string): Buffer => {
-    const pdfContent = `%PDF-1.4
-1 0 obj
-<< /Type /Catalog /Pages 2 0 R >>
-endobj
-2 0 obj
-<< /Type /Pages /Kids [3 0 R] /Count 1 >>
-endobj
-3 0 obj
-<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>
-endobj
-4 0 obj
-<< /Length 320 >>
-stream
-BT
+    const sanitize = (str: string) => str.replace(/[()\\]/g, "");
+    const streamContent = `BT
 /F1 18 Tf
 50 720 Td
 (NWA ARCHITECTS - CANDIDATE RESUME) Tj
 /F1 14 Tf
 0 -35 Td
-(Applicant: ${candidateName}) Tj
+(Applicant: ${sanitize(candidateName)}) Tj
 /F1 11 Tf
 0 -25 Td
-(Role Applied: ${role}) Tj
+(Role Applied: ${sanitize(role)}) Tj
 0 -20 Td
 (Persistent Storage: Cloud SQL / Storage Bucket Verified) Tj
 0 -30 Td
-(${details}) Tj
+(${sanitize(details)}) Tj
 0 -20 Td
 (Portfolio & Work Archive Verified via NWA Studio Core.) Tj
-ET
-endstream
-endobj
-5 0 obj
-<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
-endobj
-xref
-0 6
-0000000000 65535 f 
-0000000009 00000 n 
-0000000058 00000 n 
-0000000115 00000 n 
-0000000244 00000 n 
-0000000620 00000 n 
-trailer
-<< /Size 6 /Root 1 0 R >>
-startxref
-700
-%%EOF`;
-    return Buffer.from(pdfContent);
+ET`;
+
+    const streamLength = Buffer.byteLength(streamContent, 'utf-8');
+
+    let body = `%PDF-1.4\n`;
+    const offsets: number[] = [];
+
+    // Object 1: Catalog
+    offsets.push(Buffer.byteLength(body, 'utf-8'));
+    body += `1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n`;
+
+    // Object 2: Pages
+    offsets.push(Buffer.byteLength(body, 'utf-8'));
+    body += `2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n`;
+
+    // Object 3: Page
+    offsets.push(Buffer.byteLength(body, 'utf-8'));
+    body += `3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n`;
+
+    // Object 4: Content Stream
+    offsets.push(Buffer.byteLength(body, 'utf-8'));
+    body += `4 0 obj\n<< /Length ${streamLength} >>\nstream\n${streamContent}\nendstream\nendobj\n`;
+
+    // Object 5: Helvetica Font
+    offsets.push(Buffer.byteLength(body, 'utf-8'));
+    body += `5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n`;
+
+    // XRef table
+    const startXref = Buffer.byteLength(body, 'utf-8');
+    body += `xref\n0 6\n0000000000 65535 f \n`;
+    for (const off of offsets) {
+      body += `${String(off).padStart(10, '0')} 00000 n \n`;
+    }
+    body += `trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${startXref}\n%%EOF`;
+
+    return Buffer.from(body, 'utf-8');
   };
 
-  // Seed sample PDF resumes if not already created
+  // Seed sample PDF resumes
   const sampleResumes = [
     { name: "Resume_EThorne.pdf", candidate: "Elias Thorne", role: "Senior Design Architect", details: "10+ Yrs Architectural Practice • Foster & Partners Lead" },
     { name: "CoverLetter.pdf", candidate: "Elias Thorne", role: "Cover Letter & Intent", details: "Monolithic concrete facade focus & brutalist research" },
@@ -92,12 +98,10 @@ startxref
 
   for (const item of sampleResumes) {
     const targetPath = path.join(resumesDir, item.name);
-    if (!fs.existsSync(targetPath)) {
-      try {
-        fs.writeFileSync(targetPath, generateSamplePdf(item.candidate, item.role, item.details));
-      } catch (err) {
-        console.warn(`Could not write sample resume ${item.name}:`, err);
-      }
+    try {
+      fs.writeFileSync(targetPath, generateSamplePdf(item.candidate, item.role, item.details));
+    } catch (err) {
+      console.warn(`Could not write sample resume ${item.name}:`, err);
     }
   }
 
@@ -132,106 +136,97 @@ startxref
 
   // REST API Routes
 
-  // Healthcheck
+  // Healthcheck & Storage Provider Status
   app.get("/api/health", (_req, res) => {
-    res.json({ status: "ok", service: "NWA Architects Studio API (PostgreSQL + Cloud SQL + Document Storage)" });
+    const storageInfo = getStorageStatus();
+    res.json({
+      status: "ok",
+      service: "NWA Architects Studio API (PostgreSQL + Cloud SQL + Vercel Blob Storage)",
+      storage: storageInfo,
+    });
   });
 
-  // Universal File & Document Upload API (stores image / resume / PDF to backend filesystem & returns permanent URL)
-  app.post(["/api/upload", "/api/upload/resume"], async (req, res) => {
+  // Storage Status Endpoint
+  app.get("/api/storage/status", (_req, res) => {
+    res.json(getStorageStatus());
+  });
+
+  // Dedicated Storage File Deletion Endpoint
+  app.post("/api/storage/delete", async (req, res) => {
     try {
-      const { filename, dataUrl, base64, fileType, isResume } = req.body;
+      const { url } = req.body;
+      if (!url || typeof url !== "string") {
+        return res.status(400).json({ error: "Missing or invalid file URL to delete." });
+      }
+      const deleted = await deleteFromStorage(url);
+      res.json({ success: true, deleted, url });
+    } catch (error: any) {
+      console.error("POST /api/storage/delete error:", error);
+      res.status(500).json({ error: error.message || "Failed to delete file from storage" });
+    }
+  });
+
+  // Universal File & Document Upload API (Vercel Blob Storage with local fallback)
+  app.post(["/api/upload", "/api/upload/resume", "/api/upload/image"], async (req, res) => {
+    try {
+      const { filename, dataUrl, base64, fileType, isResume, category: reqCategory } = req.body;
       const rawData: string = dataUrl || base64;
       if (!rawData) {
         return res.status(400).json({ error: "Missing document or image data." });
       }
 
-      let ext = "pdf";
-      let docType = "PDF Document";
+      let detectedMime = "";
       let buffer: Buffer;
 
       const mimeMatch = rawData.match(/^data:([A-Za-z0-9\-\+\/\.]+);base64,(.+)$/);
       if (mimeMatch) {
-        const mime = mimeMatch[1].toLowerCase();
-        if (mime.includes("pdf")) {
-          ext = "pdf";
-          docType = "PDF Document";
-        } else if (mime.includes("wordprocessingml") || mime.includes("docx")) {
-          ext = "docx";
-          docType = "Word Document";
-        } else if (mime.includes("msword") || mime.includes("doc")) {
-          ext = "doc";
-          docType = "Word Document";
-        } else if (mime.includes("png")) {
-          ext = "png";
-          docType = "PNG Image";
-        } else if (mime.includes("webp")) {
-          ext = "webp";
-          docType = "WebP Image";
-        } else if (mime.includes("jpeg") || mime.includes("jpg")) {
-          ext = "jpg";
-          docType = "JPEG Image";
-        } else if (mime.includes("gif")) {
-          ext = "gif";
-          docType = "GIF Image";
-        } else if (mime.includes("svg")) {
-          ext = "svg";
-          docType = "SVG Vector";
-        } else if (mime.includes("plain") || mime.includes("text")) {
-          ext = "txt";
-          docType = "Text Document";
-        } else {
-          // Check requested filename extension
-          const reqExt = filename ? path.extname(filename).replace(".", "").toLowerCase() : "";
-          if (["pdf", "docx", "doc", "png", "jpg", "jpeg", "webp", "txt"].includes(reqExt)) {
-            ext = reqExt;
-          }
-        }
+        detectedMime = mimeMatch[1].toLowerCase();
         buffer = Buffer.from(mimeMatch[2], "base64");
       } else {
-        // Raw base64 string
-        const reqExt = filename ? path.extname(filename).replace(".", "").toLowerCase() : "";
-        if (reqExt) ext = reqExt;
         buffer = Buffer.from(rawData, "base64");
       }
 
-      const originalName = filename || `resume-document.${ext}`;
-      const isDocument = isResume || ["pdf", "doc", "docx", "txt"].includes(ext);
-      const targetFolder = isDocument ? resumesDir : uploadsDir;
+      // Determine category: 'resume' for applicant CVs, 'project' for architectural imagery, or 'general'
+      const isDocument = isResume || detectedMime.includes("pdf") || detectedMime.includes("word") || detectedMime.includes("document");
+      const isImage = detectedMime.includes("image") || (filename && /\.(png|jpg|jpeg|webp|svg|gif)$/i.test(filename));
+      
+      let category: "resume" | "project" | "general" = "general";
+      if (reqCategory === "project" || (!isResume && isImage)) {
+        category = "project";
+      } else if (isResume || isDocument) {
+        category = "resume";
+      }
 
-      const rawBaseName = originalName
-        .replace(/\.[^/.]+$/, "")
-        .replace(/[^a-zA-Z0-9_-]/g, "-")
-        .toLowerCase()
-        .slice(0, 50);
+      const originalName = filename || (category === "resume" ? "candidate-resume.pdf" : "architectural-image.jpg");
 
-      const uniqueFilename = `${Date.now()}-${rawBaseName || "document"}.${ext}`;
-      const filePath = path.join(targetFolder, uniqueFilename);
+      // Upload to Vercel Blob Storage (or fallback to persistent disk)
+      const uploadResult = await uploadToStorage({
+        buffer,
+        filename: originalName,
+        category,
+        mimeType: detectedMime || fileType,
+        localFallbackDir: category === "resume" ? resumesDir : uploadsDir,
+      });
 
-      fs.writeFileSync(filePath, buffer);
-
-      const fileUrl = isDocument ? `/uploads/resumes/${uniqueFilename}` : `/uploads/${uniqueFilename}`;
-      const sizeBytes = buffer.length;
-      const sizeFormatted = sizeBytes > 1024 * 1024
-        ? `${(sizeBytes / (1024 * 1024)).toFixed(2)} MB`
-        : `${(sizeBytes / 1024).toFixed(1)} KB`;
-
-      console.log(`[Storage] Stored ${docType}: ${uniqueFilename} (${sizeFormatted}) to ${isDocument ? 'Resumes Bucket' : 'Uploads'}`);
+      console.log(`[Storage API] Processed ${uploadResult.type} via [${uploadResult.storage.toUpperCase()}]: ${uploadResult.url}`);
 
       res.status(201).json({
         success: true,
-        url: fileUrl,
-        filename: uniqueFilename,
-        originalName,
-        type: docType,
-        size: sizeBytes,
-        sizeFormatted,
-        storageType: "bucket",
-        uploadedAt: new Date().toISOString(),
+        url: uploadResult.url,
+        filename: uploadResult.filename,
+        originalName: uploadResult.originalName,
+        type: uploadResult.type,
+        mimeType: uploadResult.mimeType,
+        size: uploadResult.size,
+        sizeFormatted: uploadResult.sizeFormatted,
+        storageProvider: uploadResult.storage,
+        downloadUrl: uploadResult.downloadUrl,
+        pathname: uploadResult.pathname,
+        uploadedAt: uploadResult.uploadedAt,
       });
     } catch (error: any) {
       console.error("POST /api/upload error:", error);
-      res.status(500).json({ error: error.message || "Failed to store document" });
+      res.status(500).json({ error: error.message || "Failed to store document in storage" });
     }
   });
 
@@ -337,6 +332,7 @@ startxref
         description: req.body.description || "",
         imageUrl: req.body.imageUrl || "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1200&q=80",
         status: req.body.status || "In Progress",
+        isFeatured: Boolean(req.body.isFeatured),
         editedBy: req.body.editedBy || "Admin",
       });
       res.status(201).json(newProject);
@@ -364,9 +360,14 @@ startxref
   app.delete("/api/projects/:id", async (req, res) => {
     try {
       const { id } = req.params;
+      const project = await getProjectById(id);
       const success = await deleteProject(id);
       if (success) {
-        res.json({ success: true, id });
+        if (project?.imageUrl) {
+          console.log(`[Project Deletion] Deleting associated image from storage for project "${project.title}" (${id}): ${project.imageUrl}`);
+          await deleteFromStorage(project.imageUrl);
+        }
+        res.json({ success: true, id, deletedImageUrl: project?.imageUrl });
       } else {
         res.status(404).json({ error: "Project not found" });
       }
@@ -448,6 +449,29 @@ startxref
 
   app.post("/api/applications", async (req, res) => {
     try {
+      const candidateName = typeof req.body.candidateName === "string" ? req.body.candidateName.trim() : "";
+      const email = typeof req.body.email === "string" ? req.body.email.trim() : "";
+      const phone = typeof req.body.phone === "string" ? req.body.phone.trim() : (typeof req.body.mobile === "string" ? req.body.mobile.trim() : "");
+      const position = typeof req.body.position === "string" ? req.body.position.trim() : "Applicant";
+      const portfolioUrl = typeof req.body.portfolioUrl === "string" ? req.body.portfolioUrl.trim() : "";
+      const coverLetter = typeof req.body.coverLetter === "string" ? req.body.coverLetter.trim() : "";
+
+      if (!candidateName || candidateName.length < 2) {
+        return res.status(400).json({ error: "Valid candidate name is required (min 2 characters)" });
+      }
+
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!email || !emailRegex.test(email)) {
+        return res.status(400).json({ error: "Valid email address is required" });
+      }
+
+      if (phone) {
+        const cleanPhone = phone.replace(/[\s\-()+]/g, "");
+        if (cleanPhone.length < 7 || cleanPhone.length > 15 || !/^\+?[0-9\s\-()]+$/.test(phone)) {
+          return res.status(400).json({ error: "Valid mobile number is required (7–15 digits)" });
+        }
+      }
+
       let attachmentsList = Array.isArray(req.body.attachments) && req.body.attachments.length > 0
         ? req.body.attachments
         : [];
@@ -473,16 +497,17 @@ startxref
       }
 
       const newApp = await createApplication({
-        candidateName: req.body.candidateName || "Candidate",
-        position: req.body.position || "Applicant",
+        candidateName,
+        position,
         appliedDate: new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" }),
         status: "New",
-        email: req.body.email || "",
-        portfolioUrl: req.body.portfolioUrl || "",
+        email,
+        phone,
+        portfolioUrl,
         avatarUrl: req.body.avatarUrl || undefined,
         experienceSummary: Array.isArray(req.body.experienceSummary) ? req.body.experienceSummary : [],
         attachments: attachmentsList,
-        notes: req.body.coverLetter ? `Cover Letter: ${req.body.coverLetter}` : (req.body.notes || ""),
+        notes: coverLetter ? `Cover Letter: ${coverLetter}` : (req.body.notes || ""),
       });
       res.status(201).json(newApp);
     } catch (error: any) {
@@ -509,8 +534,21 @@ startxref
   app.delete("/api/applications/:id", async (req, res) => {
     try {
       const { id } = req.params;
+      const appRecord = await getApplicationById(id);
       const success = await deleteApplication(id);
       if (success) {
+        if (appRecord?.attachments && Array.isArray(appRecord.attachments)) {
+          for (const att of appRecord.attachments) {
+            if (att.url) {
+              console.log(`[Application Deletion] Deleting attached document from storage for application (${id}): ${att.url}`);
+              await deleteFromStorage(att.url);
+            }
+          }
+        }
+        if (appRecord?.avatarUrl) {
+          console.log(`[Application Deletion] Deleting avatar from storage for application (${id}): ${appRecord.avatarUrl}`);
+          await deleteFromStorage(appRecord.avatarUrl);
+        }
         res.json({ success: true, id });
       } else {
         res.status(404).json({ error: "Application not found" });
@@ -534,16 +572,70 @@ startxref
 
   app.post("/api/inquiries", async (req, res) => {
     try {
+      const name = (req.body.name || "").trim();
+      const email = (req.body.email || "").trim();
+      const phone = (req.body.phone || req.body.mobile || "").trim();
+      const projectType = (req.body.projectType || "").trim();
+      const message = (req.body.message || "").trim();
+
+      if (!name) {
+        return res.status(400).json({ error: "Full Name is required" });
+      }
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return res.status(400).json({ error: "A valid email address is required" });
+      }
+      if (!phone) {
+        return res.status(400).json({ error: "Mobile number is required" });
+      }
+      if (!projectType) {
+        return res.status(400).json({ error: "Project type selection is required" });
+      }
+      if (!message || message.length < 5) {
+        return res.status(400).json({ error: "Message must be at least 5 characters long" });
+      }
+
       const newInquiry = await createInquiry({
-        name: req.body.name || "Anonymous",
-        email: req.body.email || "",
-        projectType: req.body.projectType || "General",
-        message: req.body.message || "",
+        name,
+        email,
+        phone,
+        projectType,
+        message,
       });
-      res.status(201).json({ success: true, inquiry: newInquiry });
+
+      // Dispatch automated notification email to nwa.architects2002@gmail.com
+      let mailResult;
+      try {
+        mailResult = await sendInquiryNotification({
+          id: newInquiry.id,
+          name,
+          email,
+          phone,
+          projectType,
+          message,
+        });
+      } catch (mailErr) {
+        console.error("Non-fatal mail notification error:", mailErr);
+      }
+
+      res.status(201).json({ success: true, inquiry: newInquiry, mailResult });
     } catch (error: any) {
       console.error("POST /api/inquiries error:", error);
       res.status(500).json({ error: error.message || "Failed to submit inquiry" });
+    }
+  });
+
+  app.put("/api/inquiries/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updated = await updateInquiry(id, req.body);
+      if (updated) {
+        res.json(updated);
+      } else {
+        res.status(404).json({ error: "Inquiry not found" });
+      }
+    } catch (error: any) {
+      console.error(`PUT /api/inquiries/${req.params.id} error:`, error);
+      res.status(500).json({ error: error.message || "Failed to update inquiry" });
     }
   });
 

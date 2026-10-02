@@ -26,6 +26,8 @@ export const AdminProjects: React.FC<AdminProjectsProps> = ({
   const [description, setDescription] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [status, setStatus] = useState<Project['status']>('In Progress');
+  const [isFeatured, setIsFeatured] = useState<boolean>(false);
+  const [featuredWarning, setFeaturedWarning] = useState<string>('');
   const [saveFeedback, setSaveSubmitted] = useState(false);
 
   // Upload States
@@ -34,6 +36,8 @@ export const AdminProjects: React.FC<AdminProjectsProps> = ({
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const [uploadFileName, setUploadFileName] = useState('');
+
+  const featuredCount = projects.filter((p) => p.isFeatured).length;
 
   const resetForm = () => {
     setEditingId(null);
@@ -44,6 +48,8 @@ export const AdminProjects: React.FC<AdminProjectsProps> = ({
     setDescription('');
     setImageUrl('');
     setStatus('In Progress');
+    setIsFeatured(false);
+    setFeaturedWarning('');
     setUploadError('');
     setUploadFileName('');
   };
@@ -57,6 +63,8 @@ export const AdminProjects: React.FC<AdminProjectsProps> = ({
     setDescription(p.description);
     setImageUrl(p.imageUrl);
     setStatus(p.status);
+    setIsFeatured(Boolean(p.isFeatured));
+    setFeaturedWarning('');
     setUploadError('');
     setUploadFileName('');
   };
@@ -92,6 +100,7 @@ export const AdminProjects: React.FC<AdminProjectsProps> = ({
             body: JSON.stringify({
               filename: file.name,
               dataUrl: base64Data,
+              category: 'project',
             }),
           });
 
@@ -157,6 +166,22 @@ export const AdminProjects: React.FC<AdminProjectsProps> = ({
     }
   };
 
+  const handleToggleFeatured = (project: Project, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const willBeFeatured = !project.isFeatured;
+    if (willBeFeatured && featuredCount >= 5) {
+      setFeaturedWarning('Maximum 5 featured projects allowed on the home screen carousel. Please unfeature another project first.');
+      setTimeout(() => setFeaturedWarning(''), 5000);
+      return;
+    }
+    setFeaturedWarning('');
+    onUpdateProject({
+      ...project,
+      isFeatured: willBeFeatured,
+      lastEdited: 'Just now',
+    });
+  };
+
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return;
@@ -175,6 +200,7 @@ export const AdminProjects: React.FC<AdminProjectsProps> = ({
           description,
           imageUrl: defaultImg,
           status,
+          isFeatured,
           lastEdited: 'Just now',
           editedBy: 'Admin',
         });
@@ -188,6 +214,7 @@ export const AdminProjects: React.FC<AdminProjectsProps> = ({
         description,
         imageUrl: defaultImg,
         status,
+        isFeatured,
       });
     }
 
@@ -350,6 +377,61 @@ export const AdminProjects: React.FC<AdminProjectsProps> = ({
                 />
               </div>
 
+              {/* Featured Project Toggle on Home Screen Carousel */}
+              <div className="p-5 bg-white border border-[#747878]/20 rounded-sm shadow-xs space-y-3">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-start gap-3 flex-1">
+                    <input
+                      id="p-featured"
+                      type="checkbox"
+                      checked={isFeatured}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        const isCurrentAlreadyFeatured = editingId
+                          ? Boolean(projects.find((p) => p.id === editingId)?.isFeatured)
+                          : false;
+
+                        if (checked && featuredCount >= 5 && !isCurrentAlreadyFeatured) {
+                          setFeaturedWarning(
+                            'Maximum 5 featured projects allowed simultaneously on the home screen carousel. Please unfeature another project before featuring this one.'
+                          );
+                          return;
+                        }
+                        setFeaturedWarning('');
+                        setIsFeatured(checked);
+                      }}
+                      className="mt-1 h-4 w-4 rounded-xs border-[#747878]/40 text-[#a33e00] focus:ring-[#a33e00] cursor-pointer"
+                    />
+                    <label htmlFor="p-featured" className="cursor-pointer select-none">
+                      <span className="label-caps font-bold text-sm text-[#000000] flex items-center gap-1.5">
+                        <span className="material-symbols-outlined text-base text-[#a33e00]">star</span>
+                        <span>Feature this Project on Home Screen Carousel</span>
+                      </span>
+                      <p className="text-xs text-[#444748] mt-1 leading-relaxed">
+                        Featured projects auto-slide dynamically on the main website hero carousel and appear in the "Featured" works tab (Strict maximum of 5 projects).
+                      </p>
+                    </label>
+                  </div>
+
+                  <span
+                    className={`label-caps text-[11px] px-2.5 py-1 font-bold shrink-0 rounded-xs border ${
+                      featuredCount >= 5
+                        ? 'bg-amber-50 text-amber-900 border-amber-300'
+                        : 'bg-[#f3f4f5] text-[#191c1d] border-[#747878]/20'
+                    }`}
+                  >
+                    Featured: {featuredCount}/5
+                  </span>
+                </div>
+
+                {featuredWarning && (
+                  <div className="p-3 bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center gap-2 animate-fade-in rounded-xs">
+                    <span className="material-symbols-outlined text-base text-amber-700 shrink-0">warning</span>
+                    <span>{featuredWarning}</span>
+                  </div>
+                )}
+              </div>
+
               <h3 className="label-caps text-[#000000] font-bold text-sm mt-8 border-b border-[#747878]/15 pb-4">
                 02 / Media Assets
               </h3>
@@ -365,6 +447,13 @@ export const AdminProjects: React.FC<AdminProjectsProps> = ({
                       <button
                         type="button"
                         onClick={() => {
+                          if (imageUrl.startsWith('/uploads/') || imageUrl.includes('vercel-storage')) {
+                            fetch('/api/storage/delete', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ url: imageUrl }),
+                            }).catch(() => {});
+                          }
                           setImageUrl('');
                           setUploadFileName('');
                         }}
@@ -453,6 +542,13 @@ export const AdminProjects: React.FC<AdminProjectsProps> = ({
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
+                              if (imageUrl.startsWith('/uploads/') || imageUrl.includes('vercel-storage')) {
+                                fetch('/api/storage/delete', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ url: imageUrl }),
+                                }).catch(() => {});
+                              }
                               setImageUrl('');
                               setUploadFileName('');
                             }}
@@ -490,17 +586,6 @@ export const AdminProjects: React.FC<AdminProjectsProps> = ({
                     <span>{uploadError}</span>
                   </div>
                 )}
-
-                {/* Storage Info Badge */}
-                <div className="p-3 bg-white border border-[#747878]/15 rounded-sm flex items-start gap-2.5 text-xs text-[#444748]">
-                  <span className="material-symbols-outlined text-base text-[#a33e00] shrink-0 mt-0.5">
-                    database
-                  </span>
-                  <div>
-                    <span className="font-semibold text-[#000000]">Backend Storage Architecture: </span>
-                    Uploaded images are securely stored in the studio server filesystem (<code className="font-mono bg-[#edeeef] px-1 py-0.5 text-[11px]">/uploads</code>) and linked in Cloud SQL PostgreSQL (<code className="font-mono bg-[#edeeef] px-1 py-0.5 text-[11px]">projects.image_url</code>).
-                  </div>
-                </div>
               </div>
             </form>
           </div>
@@ -508,9 +593,14 @@ export const AdminProjects: React.FC<AdminProjectsProps> = ({
           {/* Right Column: Existing Portfolio Archive List */}
           <div className="col-span-12 lg:col-span-5 pl-0 lg:pl-8 lg:border-l border-[#747878]/15 mt-12 lg:mt-0">
             <div className="flex justify-between items-end mb-8 border-b border-[#747878]/15 pb-4">
-              <h3 className="label-caps text-[#000000] font-bold text-sm">
-                Portfolio Archive
-              </h3>
+              <div>
+                <h3 className="label-caps text-[#000000] font-bold text-sm">
+                  Portfolio Archive
+                </h3>
+                <p className="text-[11px] text-[#747878] mt-0.5">
+                  ⭐ <span className="font-semibold text-[#000000]">{featuredCount}/5</span> Featured in Home Carousel
+                </p>
+              </div>
               <span className="label-caps text-[#444748]">
                 {projects.length} Projects
               </span>
@@ -527,18 +617,30 @@ export const AdminProjects: React.FC<AdminProjectsProps> = ({
                   }`}
                 >
                   <div className="flex items-center gap-3.5 min-w-0 flex-1 mr-2">
-                    <div className="w-12 h-12 sm:w-14 sm:h-14 bg-[#e1e3e4] rounded-sm overflow-hidden shrink-0 border border-[#747878]/15">
+                    <div className="w-12 h-12 sm:w-14 sm:h-14 bg-[#e1e3e4] rounded-sm overflow-hidden shrink-0 border border-[#747878]/15 relative">
                       <img
                         src={project.imageUrl}
                         alt={project.title}
                         className="w-full h-full object-cover filter grayscale opacity-80 hover:grayscale-0 transition-all"
                         referrerPolicy="no-referrer"
                       />
+                      {project.isFeatured && (
+                        <div className="absolute top-1 left-1 bg-[#000000] text-amber-400 p-0.5 rounded-full shadow-xs flex items-center justify-center">
+                          <span className="material-symbols-outlined text-[10px]">star</span>
+                        </div>
+                      )}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <h4 className="font-semibold text-sm sm:text-base text-[#000000] truncate block" title={project.title}>
-                        {project.title}
-                      </h4>
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-semibold text-sm sm:text-base text-[#000000] truncate block" title={project.title}>
+                          {project.title}
+                        </h4>
+                        {project.isFeatured && (
+                          <span className="label-caps text-[9px] px-1.5 py-0.2 bg-amber-50 text-amber-900 border border-amber-200 font-bold uppercase tracking-wider shrink-0 rounded-xs">
+                            Featured
+                          </span>
+                        )}
+                      </div>
                       <p className="label-caps text-[#444748] text-[10px] mt-0.5 truncate">
                         {project.category} • {project.year}
                       </p>
@@ -546,6 +648,20 @@ export const AdminProjects: React.FC<AdminProjectsProps> = ({
                   </div>
 
                   <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={(e) => handleToggleFeatured(project, e)}
+                      className={`w-8 h-8 flex items-center justify-center rounded-sm transition-colors cursor-pointer ${
+                        project.isFeatured
+                          ? 'text-amber-600 hover:bg-amber-50'
+                          : 'text-[#747878] hover:text-[#000000] hover:bg-[#f3f4f5]'
+                      }`}
+                      title={project.isFeatured ? 'Unfeature project' : 'Feature project (Max 5)'}
+                    >
+                      <span className={`material-symbols-outlined text-base ${project.isFeatured ? 'fill-current' : ''}`}>
+                        {project.isFeatured ? 'star' : 'star_border'}
+                      </span>
+                    </button>
                     <button
                       type="button"
                       onClick={() => startEdit(project)}

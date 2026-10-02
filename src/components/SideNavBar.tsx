@@ -96,23 +96,16 @@ export const SideNavBar: React.FC<SideNavBarProps> = ({
           <li>
             <button
               onClick={() => onNavigate('inquiries')}
-              className={`w-full flex items-center justify-between px-4 py-3 rounded text-left transition-all ${
+              className={`w-full flex items-center gap-4 px-4 py-3 rounded text-left transition-all ${
                 currentView === 'inquiries'
                   ? 'text-[#000000] font-bold bg-[#e7e8e9]'
                   : 'text-[#444748] hover:bg-[#edeeef]'
               }`}
             >
-              <div className="flex items-center gap-4">
-                <span className="material-symbols-outlined text-xl" style={{ fontVariationSettings: currentView === 'inquiries' ? "'FILL' 1" : "'FILL' 0" }}>
-                  mail
-                </span>
-                <span className="label-caps">Inquiries</span>
-              </div>
-              {typeof inquiriesCount === 'number' && inquiriesCount > 0 && (
-                <span className="text-[10px] bg-[#a33e00] text-white font-bold px-1.5 py-0.5 rounded-full">
-                  {inquiriesCount}
-                </span>
-              )}
+              <span className="material-symbols-outlined text-xl" style={{ fontVariationSettings: currentView === 'inquiries' ? "'FILL' 1" : "'FILL' 0" }}>
+                mail
+              </span>
+              <span className="label-caps">Inquiries</span>
             </button>
           </li>
 

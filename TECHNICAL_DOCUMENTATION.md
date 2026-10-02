@@ -87,6 +87,7 @@ Stores candidate applications submitted through the careers portal.
 - `applied_date` (`text`, Not Null): Date submission was received.
 - `status` (`text`, Default: `'New'`): Review status (`New`, `Reviewing`, `Interviewing`, `Shortlisted`, `Offer Sent`, `Rejected`).
 - `email` (`text`, Not Null): Candidate contact email.
+- `phone` (`text`, Default: `''`): Candidate contact mobile/phone number.
 - `portfolio_url` (`text`): Link to candidate portfolio/website.
 - `avatar_url` (`text`): Optional profile picture URL.
 - `experience_summary` (`jsonb`): Array of past experience objects `{ role, company, period, description }`.
@@ -99,7 +100,8 @@ Stores prospective client contact and commission inquiries.
 - `id` (`text`, Primary Key): Inquiry identifier (e.g., `inq-1`).
 - `name` (`text`, Not Null): Sender name.
 - `email` (`text`, Not Null): Sender email address.
-- `project_type` (`text`, Not Null): Type of commission (`residential`, `commercial`, `cultural`, `urban`).
+- `phone` (`text`, Default: `''`): Client mobile/phone number with country code.
+- `project_type` (`text`, Not Null): Type of commission (`residential`, `commercial`, `cultural`, `hospitality`, `landscape`, `interior`, `other`).
 - `message` (`text`, Not Null): Detailed inquiry message.
 - `created_at` (`timestamp`, Default: `NOW()`): Timestamp received.
 
@@ -283,8 +285,79 @@ All API endpoints return JSON and are hosted under the `/api` prefix on port 300
   - Removed unused re-export alias (`src/views/StudioView.tsx`).
   - Migrated database seed constants from deleted `src/data/mockData.ts` to `src/db/seedData.ts`.
   - Decoupled `src/App.tsx` and `src/db/settings.ts` from mock datasets, making PostgreSQL the sole source of truth.
+- **Contact Inquiry Mobile Number & Comprehensive Form Validations**:
+  - Added `mobile` / `phone` number field to the General Inquiries form in `ContactView.tsx` with international phone formatting hints.
+  - Implemented comprehensive field validation across all form inputs (Full Name, Email Address, Mobile Number, Project Category, and Message Brief) with real-time touched tracking and inline visual error feedback with warning icons.
+  - Updated Cloud SQL PostgreSQL schema (`contact_inquiries.phone`), database repository helpers (`src/db/inquiries.ts`), and `server.ts` API route with backend validation rules.
+  - Enhanced `AdminInquiries.tsx` to render client phone numbers in inquiry list cards, detail review panels with one-click copy and click-to-call (`tel:`) buttons, and mobile drawer actions.
+- **Candidate Application Mobile Number & Form Validations**:
+  - Added `phone` (Mobile Number) field to the candidate application form (`ApplyModal.tsx`) with international phone formatting hints.
+  - Implemented field-level validation and touched tracking for all application inputs (Full Name, Email Address, Mobile Number, Portfolio URL, and Resume / CV upload) with inline feedback indicators.
+  - Updated Cloud SQL PostgreSQL schema (`applications.phone`), types (`types.ts`), repository helpers (`src/db/applications.ts`), and `server.ts` API route (`POST /api/applications`) with backend validation and persistence.
+  - Updated `AdminApplications.tsx` to display candidate phone numbers on applicant cards and detail header views with click-to-call (`tel:`) and one-click clipboard copy.
+- **Vercel Blob Storage Integration for Resumes & Architectural Imagery**:
+  - Integrated `@vercel/blob` SDK for persistent cloud object storage of candidate resumes (`resumes/[timestamp]-[filename].pdf`) and architectural project photography (`projects/[timestamp]-[filename].jpg`).
+  - Created universal storage adapter `src/lib/blobStorage.ts` with automatic Vercel Blob cloud bucket dispatch when `BLOB_READ_WRITE_TOKEN` is present and seamless local disk fallback when running offline or locally.
+  - Updated `AdminProjects.tsx` and `ApplyModal.tsx` upload pipelines to tag categories (`project` vs `resume`) and save public CDN URLs directly into database records.
+  - Documented `BLOB_READ_WRITE_TOKEN` in `.env.example` and technical architecture specifications.
+- **Admin Settings UI Simplification**:
+  - Removed the Storage & Cloud infrastructure panel from Studio Settings (`AdminSettings.tsx`) to keep the administrative interface focused purely on Studio Profile, Team Management, and Account Security.
 - **Dynamic Identity**:
   - Connected the navigation sidebar to display live authenticated user names and emails across session lifetimes.
+- **Admin Dashboard & Form UI Refinements**:
+  - Removed decorative numbered index prefixes from Recent Projects list rows in `AdminDashboard.tsx` for cleaner typography hierarchy.
+  - Removed author subtitle tag (`by [Name]`) from Recent Projects row items in `AdminDashboard.tsx`, streamlining the list to display project status and last edited date.
+  - Removed internal storage architecture info badge from `AdminProjects.tsx` media upload section to maintain a clean, distraction-free architectural editor interface.
+- **Enhanced In-App Document & Resume Previewer**:
+  - Fixed PDF generator byte offsets and xref tables in `server.ts` to output 100% standard-compliant PDF documents.
+  - Upgraded `AdminApplications.tsx` document preview modal with a dual-mode viewer:
+    - **Architectural Resume Sheet**: A clean, highly legible formatted CV view with candidate credentials, contact strip, experience timeline, and verification stamp (guaranteed 100% visible inside iframe sandboxes).
+    - **Raw PDF / Embed**: Object and iframe rendering with fallbacks.
+    - **Image Viewer**: High-definition image preview with interactive zoom controls (zoom in, zoom out, reset).
+    - **Action Controls**: One-click "Open in New Tab" popout and "Download" buttons.
+
+- **Automatic Blob & Local Storage File Deletion Lifecycle**:
+  - Enhanced `server.ts` routes (`DELETE /api/projects/:id` and `DELETE /api/applications/:id`) to automatically resolve the target record and permanently delete associated image assets, resumes, and document attachments from Vercel Blob Storage and local `/uploads` storage directories upon deletion.
+  - Implemented `getProjectById` in `src/db/projects.ts` and `getApplicationById` in `src/db/applications.ts` to look up asset paths prior to database row removal.
+  - Enhanced `deleteFromStorage` in `src/lib/blobStorage.ts` to safely parse Vercel Blob storage URLs (`del(url)`), local filesystem paths (`/uploads/projects/*`, `/uploads/resumes/*`), and relative URLs, while ignoring external third-party placeholder URLs (e.g., Unsplash).
+  - Added dedicated `POST /api/storage/delete` endpoint in `server.ts` and hooked up image clearance / removal actions in `AdminProjects.tsx` for immediate uncommitted asset cleanup.
+
+- **Resume Direct "Open in New Tab" Action**:
+  - Replaced the in-app document preview trigger button on candidate attachment cards in `AdminApplications.tsx` with a direct **"Open in New Tab"** action button.
+  - Added safe URL/Blob object URI resolution to open both server `/uploads` documents, cloud storage bucket files, and base64 document attachments in a new browser tab.
+
+- **Featured Projects Spotlight & Auto-Sliding Hero Carousel (Max 5 Projects)**:
+  - Added `is_featured` (`boolean`, default: `false`) column to Cloud SQL PostgreSQL `projects` schema (`src/db/schema.ts`), TypeScript definitions (`types.ts`), and Drizzle repository layer (`src/db/projects.ts`).
+  - Added a dedicated **"Feature this Project on Home Screen Carousel"** toggle card in `AdminProjects.tsx` with a live capacity counter (`Featured: X/5`) and validation preventing more than 5 featured projects from being active concurrently.
+  - Implemented one-click featured star (`⭐`) quick-toggle action in the Portfolio Archive sidebar list in `AdminProjects.tsx`.
+  - Connected `PortfolioView.tsx` to dynamically query active featured projects (up to 5) and project them directly into the auto-sliding Hero Carousel with smooth Framer Motion crossfade transitions (auto-sliding every 3.5s with pause on hover), real-time slide counter (`01 / 05 • Auto Sliding`), and one-click "Explore Project Details" modal trigger.
+  - Preserved clean, uncluttered portfolio gallery aesthetic on the main page by keeping standard architectural category filtering (`All`, `Residential`, `Commercial`, `Cultural`, `Institutional`, `Healthcare`, `Office`) and seamless project tiles without intrusive badges.
+
+- **Project Detail Image Color Fidelity**:
+  - Removed the default grayscale filter effect from the project detail modal hero image (`ProjectDetailModal.tsx`) so architectural photographs and elevations render immediately in full original color fidelity when opened.
+
+- **Automated Client Inquiry Email Notification System**:
+  - Implemented dedicated email dispatch service `src/lib/mailService.ts` using `nodemailer`.
+  - Integrated automatic email notification trigger inside `POST /api/inquiries` in `server.ts`.
+  - When a user submits an inquiry on the website contact page, the system immediately sends a formatted email to `nwa.architects2002@gmail.com` containing:
+    - Client Full Name, Email Address, and Phone/Mobile Number.
+    - Project Category / Type.
+    - Full client architectural brief/message with received timestamp.
+    - Direct `Reply-To` header set to the client's email for single-click response from the studio inbox.
+    - Clean architectural HTML email template with fallbacks for standard SMTP/Gmail App Passwords or graceful outbox logging.
+  - Documented environment variables (`INQUIRY_NOTIFICATION_EMAIL`, `GMAIL_USER`, `GMAIL_APP_PASSWORD`, `SMTP_*`) in `.env.example`.
+
+- **Admin Inquiries Badge Removal & Navigation Streamlining**:
+  - Removed the numerical notification counter badge from the sidebar navigation item (`SideNavBar.tsx`) for Inquiries to provide a consistent, uniform layout with other menu items.
+  - Removed the counter pill badge from the header title in `AdminInquiries.tsx` for cleaner typographical hierarchy.
+
+- **Inquiry Status Lifecycle & "NEW" / "Contacted" Tagging**:
+  - Added `status` (`text`, values: `'New' | 'Contacted'`, default: `'New'`) column to Cloud SQL PostgreSQL `contact_inquiries` schema (`src/db/schema.ts`), TypeScript definitions (`types.ts`), and Drizzle repository layer (`src/db/inquiries.ts`).
+  - Added `PUT /api/inquiries/:id` endpoint in `server.ts` to persist status updates.
+  - Implemented visual **"NEW"** badge indicators for fresh inquiries in `AdminInquiries.tsx`.
+  - Added a dedicated **"Mark as Contacted"** action button in the inquiry detail panel (and mobile drawer) that instantly switches the status to `'Contacted'` and removes the "NEW" tag.
+  - Automatic status transition to `'Contacted'` when clicking "Reply" (email) or "Call" (mobile).
+  - Added status filter tabs (**All**, **New**, **Contacted**) in the inquiries list sidebar.
 
 Whenever a new feature is implemented, a data model is altered, or a UI component is modified:
 1. Update this `TECHNICAL_DOCUMENTATION.md` file reflecting the updated schema, routes, or component behavior.

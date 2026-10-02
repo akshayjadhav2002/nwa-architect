@@ -13,6 +13,7 @@ export async function getAllApplications(): Promise<Application[]> {
       appliedDate: r.appliedDate,
       status: r.status as Application['status'],
       email: r.email,
+      phone: r.phone || undefined,
       portfolioUrl: r.portfolioUrl || '',
       avatarUrl: r.avatarUrl || undefined,
       experienceSummary: r.experienceSummary || [],
@@ -21,6 +22,30 @@ export async function getAllApplications(): Promise<Application[]> {
     }));
   } catch (error) {
     console.error('Database getAllApplications failed:', error);
+    throw new Error('Database query failed. Please try again later.', { cause: error });
+  }
+}
+
+export async function getApplicationById(id: string): Promise<Application | null> {
+  try {
+    const [row] = await db.select().from(applications).where(eq(applications.id, id)).limit(1);
+    if (!row) return null;
+    return {
+      id: row.id,
+      candidateName: row.candidateName,
+      position: row.position,
+      appliedDate: row.appliedDate,
+      status: row.status as Application['status'],
+      email: row.email,
+      phone: row.phone || undefined,
+      portfolioUrl: row.portfolioUrl || '',
+      avatarUrl: row.avatarUrl || undefined,
+      experienceSummary: row.experienceSummary || [],
+      attachments: row.attachments || [],
+      notes: row.notes || undefined,
+    };
+  } catch (error) {
+    console.error(`Database getApplicationById failed for ${id}:`, error);
     throw new Error('Database query failed. Please try again later.', { cause: error });
   }
 }
@@ -35,6 +60,7 @@ export async function createApplication(appData: Omit<Application, 'id'> & { id?
       appliedDate: appData.appliedDate || new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
       status: appData.status || 'New',
       email: appData.email,
+      phone: appData.phone || '',
       portfolioUrl: appData.portfolioUrl || '',
       avatarUrl: appData.avatarUrl || null,
       experienceSummary: appData.experienceSummary || [],
@@ -49,6 +75,7 @@ export async function createApplication(appData: Omit<Application, 'id'> & { id?
       appliedDate: inserted.appliedDate,
       status: inserted.status as Application['status'],
       email: inserted.email,
+      phone: inserted.phone || undefined,
       portfolioUrl: inserted.portfolioUrl || '',
       avatarUrl: inserted.avatarUrl || undefined,
       experienceSummary: inserted.experienceSummary || [],
@@ -69,6 +96,7 @@ export async function updateApplication(id: string, updates: Partial<Application
     if (updates.position !== undefined) updateValues.position = updates.position;
     if (updates.status !== undefined) updateValues.status = updates.status;
     if (updates.email !== undefined) updateValues.email = updates.email;
+    if (updates.phone !== undefined) updateValues.phone = updates.phone;
     if (updates.portfolioUrl !== undefined) updateValues.portfolioUrl = updates.portfolioUrl;
     if (updates.avatarUrl !== undefined) updateValues.avatarUrl = updates.avatarUrl;
     if (updates.experienceSummary !== undefined) updateValues.experienceSummary = updates.experienceSummary;
@@ -89,6 +117,7 @@ export async function updateApplication(id: string, updates: Partial<Application
       appliedDate: updated.appliedDate,
       status: updated.status as Application['status'],
       email: updated.email,
+      phone: updated.phone || undefined,
       portfolioUrl: updated.portfolioUrl || '',
       avatarUrl: updated.avatarUrl || undefined,
       experienceSummary: updated.experienceSummary || [],

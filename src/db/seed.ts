@@ -18,6 +18,7 @@ export async function seedDatabaseIfEmpty() {
           description: p.description,
           imageUrl: p.imageUrl,
           status: p.status,
+          isFeatured: Boolean(p.isFeatured),
           lastEdited: p.lastEdited || 'Just now',
           editedBy: p.editedBy || 'Admin',
         }).onConflictDoNothing();
@@ -72,8 +73,10 @@ export async function seedDatabaseIfEmpty() {
           id: inq.id,
           name: inq.name,
           email: inq.email,
+          phone: inq.phone || '',
           projectType: inq.projectType,
           message: inq.message,
+          status: inq.status || 'New',
         }).onConflictDoNothing();
       }
     }

@@ -7,6 +7,7 @@ interface ApplyModalProps {
   onSubmitApplication: (appData: {
     candidateName: string;
     email: string;
+    phone?: string;
     position: string;
     portfolioUrl: string;
     coverLetter: string;
@@ -33,6 +34,7 @@ interface ApplyModalProps {
 export const ApplyModal: React.FC<ApplyModalProps> = ({ job, onClose, onSubmitApplication }) => {
   const [candidateName, setCandidateName] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [portfolioUrl, setPortfolioUrl] = useState('');
   const [coverLetter, setCoverLetter] = useState('');
   const [resumeFile, setResumeFile] = useState<{
@@ -47,9 +49,48 @@ export const ApplyModal: React.FC<ApplyModalProps> = ({ job, onClose, onSubmitAp
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!job) return null;
+
+  // Validation Rules
+  const errors: Record<string, string> = {};
+
+  if (!candidateName.trim()) {
+    errors.candidateName = 'Full name is required';
+  } else if (candidateName.trim().length < 2) {
+    errors.candidateName = 'Name must be at least 2 characters';
+  }
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!email.trim()) {
+    errors.email = 'Email address is required';
+  } else if (!emailRegex.test(email.trim())) {
+    errors.email = 'Please enter a valid email address';
+  }
+
+  const cleanPhone = phone.replace(/[\s\-()+]/g, '');
+  if (!phone.trim()) {
+    errors.phone = 'Mobile number is required';
+  } else if (cleanPhone.length < 7 || cleanPhone.length > 15 || !/^\+?[0-9\s\-()]+$/.test(phone.trim())) {
+    errors.phone = 'Please enter a valid mobile number (7–15 digits)';
+  }
+
+  if (portfolioUrl.trim()) {
+    const urlPattern = /^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})([/\w .-]*)*\/?$/i;
+    if (!urlPattern.test(portfolioUrl.trim())) {
+      errors.portfolioUrl = 'Please enter a valid URL (e.g. https://yourportfolio.com)';
+    }
+  }
+
+  if (!resumeFile) {
+    errors.resumeFile = 'Please upload your Resume / CV';
+  }
+
+  const handleBlur = (field: string) => {
+    setTouched((prev) => ({ ...prev, [field]: true }));
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -87,6 +128,7 @@ export const ApplyModal: React.FC<ApplyModalProps> = ({ job, onClose, onSubmitAp
             filename: file.name,
             dataUrl,
             isResume: true,
+            category: 'resume',
           }),
         });
 
@@ -103,6 +145,7 @@ export const ApplyModal: React.FC<ApplyModalProps> = ({ job, onClose, onSubmitAp
           isUploaded: true,
           dataUrl,
         });
+        setTouched((prev) => ({ ...prev, resumeFile: true }));
       } catch (err: any) {
         console.warn('Storage upload fallback:', err);
         // Fallback to local memory URL if network error
@@ -115,6 +158,7 @@ export const ApplyModal: React.FC<ApplyModalProps> = ({ job, onClose, onSubmitAp
           isUploaded: true,
           dataUrl,
         });
+        setTouched((prev) => ({ ...prev, resumeFile: true }));
       } finally {
         setIsUploading(false);
       }
@@ -158,6 +202,19 @@ export const ApplyModal: React.FC<ApplyModalProps> = ({ job, onClose, onSubmitAp
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    // Touch all fields to reveal any errors
+    setTouched({
+      candidateName: true,
+      email: true,
+      phone: true,
+      portfolioUrl: true,
+      resumeFile: true,
+    });
+
+    if (Object.keys(errors).length > 0) {
+      return;
+    }
+
     let finalResumeUrl = resumeFile?.url || '/uploads/resumes/Sample_Architectural_CV.pdf';
     let finalResumeName = resumeFile?.name || 'Resume.pdf';
     let finalResumeSize = resumeFile?.size || '1.2 MB';
@@ -200,11 +257,12 @@ export const ApplyModal: React.FC<ApplyModalProps> = ({ job, onClose, onSubmitAp
     ];
 
     onSubmitApplication({
-      candidateName,
-      email,
+      candidateName: candidateName.trim(),
+      email: email.trim(),
+      phone: phone.trim(),
       position: job.title,
-      portfolioUrl,
-      coverLetter,
+      portfolioUrl: portfolioUrl.trim(),
+      coverLetter: coverLetter.trim(),
       resumeName: finalResumeName,
       resumeUrl: finalResumeUrl,
       resumeSize: finalResumeSize,
@@ -259,9 +317,10 @@ export const ApplyModal: React.FC<ApplyModalProps> = ({ job, onClose, onSubmitAp
         ) : (
           <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0 overflow-hidden">
             {/* Scrollable Form Content */}
-            <div className="overflow-y-auto p-5 sm:p-6 md:p-8 space-y-6 flex-1">
+            <div className="overflow-y-auto p-5 sm:p-6 md:p-8 space-y-5 flex-1">
+              {/* Full Name */}
               <div>
-                <label className="label-caps text-[#444748] block mb-2 uppercase text-xs font-semibold">
+                <label className="label-caps text-[#444748] block mb-1.5 uppercase text-xs font-semibold">
                   Full Name <span className="text-[#a33e00]">*</span>
                 </label>
                 <input
@@ -269,41 +328,107 @@ export const ApplyModal: React.FC<ApplyModalProps> = ({ job, onClose, onSubmitAp
                   required
                   value={candidateName}
                   onChange={(e) => setCandidateName(e.target.value)}
+                  onBlur={() => handleBlur('candidateName')}
                   placeholder="e.g., Elias Thorne"
-                  className="w-full bg-white border border-[#747878]/30 px-3 py-2 text-[#000000] focus:ring-1 focus:ring-[#000000] focus:border-[#000000] text-sm"
+                  className={`w-full bg-white border px-3.5 py-2.5 text-[#000000] text-sm transition-colors rounded-xs focus:outline-hidden ${
+                    touched.candidateName && errors.candidateName
+                      ? 'border-[#ba1a1a] focus:ring-1 focus:ring-[#ba1a1a]'
+                      : 'border-[#747878]/30 focus:border-[#000000] focus:ring-1 focus:ring-[#000000]'
+                  }`}
                 />
+                {touched.candidateName && errors.candidateName && (
+                  <p className="mt-1 text-xs text-[#ba1a1a] flex items-center gap-1 font-medium">
+                    <span className="material-symbols-outlined text-[14px]">error</span>
+                    {errors.candidateName}
+                  </p>
+                )}
               </div>
 
-              <div>
-                <label className="label-caps text-[#444748] block mb-2 uppercase text-xs font-semibold">
-                  Email Address <span className="text-[#a33e00]">*</span>
-                </label>
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="elias@example.com"
-                  className="w-full bg-white border border-[#747878]/30 px-3 py-2 text-[#000000] focus:ring-1 focus:ring-[#000000] focus:border-[#000000] text-sm"
-                />
+              {/* Email & Mobile Phone Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Email Address */}
+                <div>
+                  <label className="label-caps text-[#444748] block mb-1.5 uppercase text-xs font-semibold">
+                    Email Address <span className="text-[#a33e00]">*</span>
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    onBlur={() => handleBlur('email')}
+                    placeholder="elias@example.com"
+                    className={`w-full bg-white border px-3.5 py-2.5 text-[#000000] text-sm transition-colors rounded-xs focus:outline-hidden ${
+                      touched.email && errors.email
+                        ? 'border-[#ba1a1a] focus:ring-1 focus:ring-[#ba1a1a]'
+                        : 'border-[#747878]/30 focus:border-[#000000] focus:ring-1 focus:ring-[#000000]'
+                    }`}
+                  />
+                  {touched.email && errors.email && (
+                    <p className="mt-1 text-xs text-[#ba1a1a] flex items-center gap-1 font-medium">
+                      <span className="material-symbols-outlined text-[14px]">error</span>
+                      {errors.email}
+                    </p>
+                  )}
+                </div>
+
+                {/* Mobile / Phone Number */}
+                <div>
+                  <label className="label-caps text-[#444748] block mb-1.5 uppercase text-xs font-semibold">
+                    Mobile Number <span className="text-[#a33e00]">*</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="tel"
+                      required
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      onBlur={() => handleBlur('phone')}
+                      placeholder="e.g., +1 (555) 234-5678"
+                      className={`w-full bg-white border px-3.5 py-2.5 text-[#000000] text-sm transition-colors rounded-xs focus:outline-hidden ${
+                        touched.phone && errors.phone
+                          ? 'border-[#ba1a1a] focus:ring-1 focus:ring-[#ba1a1a]'
+                          : 'border-[#747878]/30 focus:border-[#000000] focus:ring-1 focus:ring-[#000000]'
+                      }`}
+                    />
+                  </div>
+                  {touched.phone && errors.phone && (
+                    <p className="mt-1 text-xs text-[#ba1a1a] flex items-center gap-1 font-medium">
+                      <span className="material-symbols-outlined text-[14px]">error</span>
+                      {errors.phone}
+                    </p>
+                  )}
+                </div>
               </div>
 
+              {/* Portfolio / Website URL */}
               <div>
-                <label className="label-caps text-[#444748] block mb-2 uppercase text-xs font-semibold">
-                  Portfolio / Website URL
+                <label className="label-caps text-[#444748] block mb-1.5 uppercase text-xs font-semibold">
+                  Portfolio / Website URL <span className="text-[#747878] font-normal text-[11px]">(Optional)</span>
                 </label>
                 <input
                   type="url"
                   value={portfolioUrl}
                   onChange={(e) => setPortfolioUrl(e.target.value)}
+                  onBlur={() => handleBlur('portfolioUrl')}
                   placeholder="https://eliasthorne-portfolio.com"
-                  className="w-full bg-white border border-[#747878]/30 px-3 py-2 text-[#000000] focus:ring-1 focus:ring-[#000000] focus:border-[#000000] text-sm"
+                  className={`w-full bg-white border px-3.5 py-2.5 text-[#000000] text-sm transition-colors rounded-xs focus:outline-hidden ${
+                    touched.portfolioUrl && errors.portfolioUrl
+                      ? 'border-[#ba1a1a] focus:ring-1 focus:ring-[#ba1a1a]'
+                      : 'border-[#747878]/30 focus:border-[#000000] focus:ring-1 focus:ring-[#000000]'
+                  }`}
                 />
+                {touched.portfolioUrl && errors.portfolioUrl && (
+                  <p className="mt-1 text-xs text-[#ba1a1a] flex items-center gap-1 font-medium">
+                    <span className="material-symbols-outlined text-[14px]">error</span>
+                    {errors.portfolioUrl}
+                  </p>
+                )}
               </div>
 
               {/* Resume / CV Upload Field */}
               <div>
-                <div className="flex justify-between items-center mb-2">
+                <div className="flex justify-between items-center mb-1.5">
                   <label className="label-caps text-[#444748] uppercase text-xs font-semibold">
                     Resume / CV <span className="text-[#a33e00]">*</span>
                   </label>
@@ -333,26 +458,36 @@ export const ApplyModal: React.FC<ApplyModalProps> = ({ job, onClose, onSubmitAp
                     </p>
                   </div>
                 ) : !resumeFile ? (
-                  <div
-                    onDragOver={handleDragOver}
-                    onDragLeave={handleDragLeave}
-                    onDrop={handleDrop}
-                    onClick={() => fileInputRef.current?.click()}
-                    className={`border-2 border-dashed p-6 text-center cursor-pointer transition-all rounded-sm ${
-                      isDragging
-                        ? 'border-[#a33e00] bg-[#a33e00]/5'
-                        : 'border-[#747878]/30 hover:border-[#000000] bg-white'
-                    }`}
-                  >
-                    <span className="material-symbols-outlined text-3xl text-[#a33e00] mb-2 block">
-                      upload_file
-                    </span>
-                    <p className="text-sm font-semibold text-[#000000] mb-1">
-                      Click to upload or drag & drop your Resume / CV
-                    </p>
-                    <p className="text-xs text-[#747878] label-caps">
-                      PDF, DOC, or DOCX (Up to 20MB)
-                    </p>
+                  <div>
+                    <div
+                      onDragOver={handleDragOver}
+                      onDragLeave={handleDragLeave}
+                      onDrop={handleDrop}
+                      onClick={() => fileInputRef.current?.click()}
+                      className={`border-2 border-dashed p-6 text-center cursor-pointer transition-all rounded-sm ${
+                        touched.resumeFile && errors.resumeFile
+                          ? 'border-[#ba1a1a] bg-[#ba1a1a]/5'
+                          : isDragging
+                          ? 'border-[#a33e00] bg-[#a33e00]/5'
+                          : 'border-[#747878]/30 hover:border-[#000000] bg-white'
+                      }`}
+                    >
+                      <span className="material-symbols-outlined text-3xl text-[#a33e00] mb-2 block">
+                        upload_file
+                      </span>
+                      <p className="text-sm font-semibold text-[#000000] mb-1">
+                        Click to upload or drag & drop your Resume / CV
+                      </p>
+                      <p className="text-xs text-[#747878] label-caps">
+                        PDF, DOC, or DOCX (Up to 20MB)
+                      </p>
+                    </div>
+                    {touched.resumeFile && errors.resumeFile && (
+                      <p className="mt-1 text-xs text-[#ba1a1a] flex items-center gap-1 font-medium">
+                        <span className="material-symbols-outlined text-[14px]">error</span>
+                        {errors.resumeFile}
+                      </p>
+                    )}
                   </div>
                 ) : (
                   <div className="flex items-center justify-between p-4 bg-white border border-[#747878]/30 shadow-xs rounded-sm">
@@ -399,16 +534,17 @@ export const ApplyModal: React.FC<ApplyModalProps> = ({ job, onClose, onSubmitAp
                 )}
               </div>
 
+              {/* Cover Letter */}
               <div>
-                <label className="label-caps text-[#444748] block mb-2 uppercase text-xs font-semibold">
-                  Cover Letter / Note
+                <label className="label-caps text-[#444748] block mb-1.5 uppercase text-xs font-semibold">
+                  Cover Letter / Note <span className="text-[#747878] font-normal text-[11px]">(Optional)</span>
                 </label>
                 <textarea
                   rows={4}
                   value={coverLetter}
                   onChange={(e) => setCoverLetter(e.target.value)}
                   placeholder="Brief summary of your architectural background and design ethos..."
-                  className="w-full bg-white border border-[#747878]/30 p-3 text-sm text-[#000000] focus:ring-1 focus:ring-[#000000] focus:border-[#000000] resize-none"
+                  className="w-full bg-white border border-[#747878]/30 p-3 text-sm text-[#000000] focus:ring-1 focus:ring-[#000000] focus:border-[#000000] resize-none rounded-xs focus:outline-hidden"
                 />
               </div>
             </div>

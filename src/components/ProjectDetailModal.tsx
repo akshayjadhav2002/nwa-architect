@@ -26,7 +26,7 @@ export const ProjectDetailModal: React.FC<ProjectDetailModalProps> = ({ project,
           <img
             src={project.imageUrl}
             alt={project.title}
-            className="w-full h-full object-cover grayscale hover:grayscale-0 transition-all duration-700"
+            className="w-full h-full object-cover"
             referrerPolicy="no-referrer"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>

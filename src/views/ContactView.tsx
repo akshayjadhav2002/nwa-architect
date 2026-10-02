@@ -4,6 +4,7 @@ interface ContactViewProps {
   onSubmitInquiry: (inquiry: {
     name: string;
     email: string;
+    phone: string;
     projectType: string;
     message: string;
   }) => void;
@@ -12,19 +13,126 @@ interface ContactViewProps {
 export const ContactView: React.FC<ContactViewProps> = ({ onSubmitInquiry }) => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [projectType, setProjectType] = useState('');
   const [message, setMessage] = useState('');
   const [submitted, setSubmitted] = useState(false);
 
+  // Field validation and touched states
+  const [touched, setTouched] = useState<{ [key: string]: boolean }>({});
+  const [errors, setErrors] = useState<{ [key: string]: string }>({});
+
+  const validateField = (fieldName: string, value: string): string => {
+    switch (fieldName) {
+      case 'name': {
+        const trimmed = value.trim();
+        if (!trimmed) return 'Full name is required';
+        if (trimmed.length < 2) return 'Name must be at least 2 characters';
+        if (!/^[a-zA-Z\s.'-]+$/.test(trimmed)) return 'Name contains invalid characters';
+        return '';
+      }
+      case 'email': {
+        const trimmed = value.trim();
+        if (!trimmed) return 'Email address is required';
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(trimmed)) return 'Please enter a valid email address';
+        return '';
+      }
+      case 'phone': {
+        const trimmed = value.trim();
+        if (!trimmed) return 'Mobile number is required';
+        // Check for valid phone: allows +, spaces, parentheses, dashes, and requires 7-15 digits
+        const digitsOnly = trimmed.replace(/\D/g, '');
+        if (digitsOnly.length < 7 || digitsOnly.length > 15) {
+          return 'Please enter a valid phone number (7–15 digits)';
+        }
+        if (!/^[+]?[0-9\s\-()]{7,20}$/.test(trimmed)) {
+          return 'Invalid phone number format';
+        }
+        return '';
+      }
+      case 'projectType': {
+        if (!value) return 'Please select a project category';
+        return '';
+      }
+      case 'message': {
+        const trimmed = value.trim();
+        if (!trimmed) return 'Project message is required';
+        if (trimmed.length < 10) return 'Please provide at least 10 characters for your brief';
+        return '';
+      }
+      default:
+        return '';
+    }
+  };
+
+  const handleBlur = (field: string, value: string) => {
+    setTouched((prev) => ({ ...prev, [field]: true }));
+    const err = validateField(field, value);
+    setErrors((prev) => ({ ...prev, [field]: err }));
+  };
+
+  const handleChange = (field: string, value: string) => {
+    if (field === 'name') setName(value);
+    if (field === 'email') setEmail(value);
+    if (field === 'phone') setPhone(value);
+    if (field === 'projectType') setProjectType(value);
+    if (field === 'message') setMessage(value);
+
+    if (touched[field]) {
+      const err = validateField(field, value);
+      setErrors((prev) => ({ ...prev, [field]: err }));
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmitInquiry({ name, email, projectType, message });
+
+    const nameErr = validateField('name', name);
+    const emailErr = validateField('email', email);
+    const phoneErr = validateField('phone', phone);
+    const projectTypeErr = validateField('projectType', projectType);
+    const messageErr = validateField('message', message);
+
+    const newErrors = {
+      name: nameErr,
+      email: emailErr,
+      phone: phoneErr,
+      projectType: projectTypeErr,
+      message: messageErr,
+    };
+
+    setTouched({
+      name: true,
+      email: true,
+      phone: true,
+      projectType: true,
+      message: true,
+    });
+
+    setErrors(newErrors);
+
+    if (nameErr || emailErr || phoneErr || projectTypeErr || messageErr) {
+      return;
+    }
+
+    onSubmitInquiry({
+      name: name.trim(),
+      email: email.trim(),
+      phone: phone.trim(),
+      projectType,
+      message: message.trim(),
+    });
+
     setSubmitted(true);
     setTimeout(() => {
       setName('');
       setEmail('');
+      setPhone('');
       setProjectType('');
       setMessage('');
+      setTouched({});
+      setErrors({});
       setSubmitted(false);
     }, 4000);
   };
@@ -135,80 +243,166 @@ export const ContactView: React.FC<ContactViewProps> = ({ onSubmitInquiry }) => 
           </h2>
 
           {submitted ? (
-            <div className="py-16 text-center space-y-4">
+            <div className="py-16 text-center space-y-4 animate-fade-in">
               <span className="material-symbols-outlined text-6xl text-[#a33e00]">check_circle</span>
               <h3 className="font-serif text-2xl font-bold text-[#000000]">Inquiry Received</h3>
               <p className="text-[#444748]">Thank you, {name}. We will review your project brief and respond shortly.</p>
             </div>
           ) : (
-            <form onSubmit={handleSubmit} className="flex flex-col gap-8">
+            <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-6">
+              {/* Full Name */}
               <div className="relative">
-                <label className="label-caps text-[#444748] uppercase block mb-2" htmlFor="fullName">
-                  Full Name
+                <label className="label-caps text-[#444748] uppercase block mb-2 flex items-center justify-between" htmlFor="fullName">
+                  <span>Full Name</span>
+                  <span className="text-[10px] text-[#747878] normal-case tracking-normal">Required</span>
                 </label>
                 <input
                   id="fullName"
                   type="text"
-                  required
                   placeholder="Jane Doe"
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full bg-transparent border-0 border-b border-[#747878]/30 text-base text-[#000000] focus:ring-0 focus:border-[#000000] pb-2 px-0"
+                  onChange={(e) => handleChange('name', e.target.value)}
+                  onBlur={(e) => handleBlur('name', e.target.value)}
+                  className={`w-full bg-transparent border-0 border-b text-base text-[#000000] focus:ring-0 pb-2 px-0 transition-colors ${
+                    touched.name && errors.name
+                      ? 'border-red-500 focus:border-red-600'
+                      : 'border-[#747878]/30 focus:border-[#000000]'
+                  }`}
                 />
+                {touched.name && errors.name && (
+                  <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                    <span className="material-symbols-outlined text-xs">error</span>
+                    <span>{errors.name}</span>
+                  </p>
+                )}
               </div>
 
+              {/* Email Address */}
               <div className="relative">
-                <label className="label-caps text-[#444748] uppercase block mb-2" htmlFor="emailAddress">
-                  Email Address
+                <label className="label-caps text-[#444748] uppercase block mb-2 flex items-center justify-between" htmlFor="emailAddress">
+                  <span>Email Address</span>
+                  <span className="text-[10px] text-[#747878] normal-case tracking-normal">Required</span>
                 </label>
                 <input
                   id="emailAddress"
                   type="email"
-                  required
                   placeholder="jane@example.com"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-transparent border-0 border-b border-[#747878]/30 text-base text-[#000000] focus:ring-0 focus:border-[#000000] pb-2 px-0"
+                  onChange={(e) => handleChange('email', e.target.value)}
+                  onBlur={(e) => handleBlur('email', e.target.value)}
+                  className={`w-full bg-transparent border-0 border-b text-base text-[#000000] focus:ring-0 pb-2 px-0 transition-colors ${
+                    touched.email && errors.email
+                      ? 'border-red-500 focus:border-red-600'
+                      : 'border-[#747878]/30 focus:border-[#000000]'
+                  }`}
                 />
+                {touched.email && errors.email && (
+                  <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                    <span className="material-symbols-outlined text-xs">error</span>
+                    <span>{errors.email}</span>
+                  </p>
+                )}
               </div>
 
+              {/* Mobile Number */}
               <div className="relative">
-                <label className="label-caps text-[#444748] uppercase block mb-2" htmlFor="projectType">
-                  Project Type
+                <label className="label-caps text-[#444748] uppercase block mb-2 flex items-center justify-between" htmlFor="mobileNumber">
+                  <span>Mobile Number</span>
+                  <span className="text-[10px] text-[#747878] normal-case tracking-normal">Required</span>
+                </label>
+                <input
+                  id="mobileNumber"
+                  type="tel"
+                  placeholder="+91 98506 01673"
+                  value={phone}
+                  onChange={(e) => handleChange('phone', e.target.value)}
+                  onBlur={(e) => handleBlur('phone', e.target.value)}
+                  className={`w-full bg-transparent border-0 border-b text-base text-[#000000] focus:ring-0 pb-2 px-0 font-mono transition-colors ${
+                    touched.phone && errors.phone
+                      ? 'border-red-500 focus:border-red-600'
+                      : 'border-[#747878]/30 focus:border-[#000000]'
+                  }`}
+                />
+                {touched.phone && errors.phone ? (
+                  <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                    <span className="material-symbols-outlined text-xs">error</span>
+                    <span>{errors.phone}</span>
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-[#747878] mt-1 font-mono">
+                    Include country code (e.g. +91 98506 01673 or +1 555-0199)
+                  </p>
+                )}
+              </div>
+
+              {/* Project Type */}
+              <div className="relative">
+                <label className="label-caps text-[#444748] uppercase block mb-2 flex items-center justify-between" htmlFor="projectType">
+                  <span>Project Category</span>
+                  <span className="text-[10px] text-[#747878] normal-case tracking-normal">Required</span>
                 </label>
                 <select
                   id="projectType"
-                  required
                   value={projectType}
-                  onChange={(e) => setProjectType(e.target.value)}
-                  className="w-full bg-transparent border-0 border-b border-[#747878]/30 text-base text-[#000000] focus:ring-0 focus:border-[#000000] pb-2 px-0 cursor-pointer"
+                  onChange={(e) => handleChange('projectType', e.target.value)}
+                  onBlur={(e) => handleBlur('projectType', e.target.value)}
+                  className={`w-full bg-transparent border-0 border-b text-base text-[#000000] focus:ring-0 pb-2 px-0 cursor-pointer transition-colors ${
+                    touched.projectType && errors.projectType
+                      ? 'border-red-500 focus:border-red-600'
+                      : 'border-[#747878]/30 focus:border-[#000000]'
+                  }`}
                 >
                   <option value="" disabled>Select an option</option>
                   <option value="residential">Residential</option>
                   <option value="commercial">Commercial</option>
                   <option value="cultural">Cultural / Civic</option>
-                  <option value="other">Other</option>
+                  <option value="hospitality">Hospitality &amp; Leisure</option>
+                  <option value="landscape">Landscape &amp; Urban Design</option>
+                  <option value="interior">Interior Architecture</option>
+                  <option value="other">Other Consultation</option>
                 </select>
+                {touched.projectType && errors.projectType && (
+                  <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                    <span className="material-symbols-outlined text-xs">error</span>
+                    <span>{errors.projectType}</span>
+                  </p>
+                )}
               </div>
 
+              {/* Message */}
               <div className="relative">
-                <label className="label-caps text-[#444748] uppercase block mb-2" htmlFor="message">
-                  Message
-                </label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="label-caps text-[#444748] uppercase block" htmlFor="message">
+                    Project Message &amp; Brief
+                  </label>
+                  <span className="text-[10px] text-[#747878]">
+                    {message.trim().length} chars (min 10)
+                  </span>
+                </div>
                 <textarea
                   id="message"
-                  required
                   rows={4}
-                  placeholder="Brief description of your inquiry..."
+                  placeholder="Brief description of your plot, scope, timeline, and architectural requirements..."
                   value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  className="w-full bg-transparent border-0 border-b border-[#747878]/30 text-base text-[#000000] focus:ring-0 focus:border-[#000000] pb-2 px-0 resize-none"
+                  onChange={(e) => handleChange('message', e.target.value)}
+                  onBlur={(e) => handleBlur('message', e.target.value)}
+                  className={`w-full bg-transparent border-0 border-b text-base text-[#000000] focus:ring-0 pb-2 px-0 resize-none transition-colors ${
+                    touched.message && errors.message
+                      ? 'border-red-500 focus:border-red-600'
+                      : 'border-[#747878]/30 focus:border-[#000000]'
+                  }`}
                 />
+                {touched.message && errors.message && (
+                  <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                    <span className="material-symbols-outlined text-xs">error</span>
+                    <span>{errors.message}</span>
+                  </p>
+                )}
               </div>
 
               <button
                 type="submit"
-                className="mt-4 bg-[#000000] text-white label-caps py-4 px-8 w-fit hover:bg-[#a33e00] transition-colors duration-300 uppercase tracking-widest flex items-center gap-2 group"
+                className="mt-4 bg-[#000000] text-white label-caps py-4 px-8 w-fit hover:bg-[#a33e00] transition-colors duration-300 uppercase tracking-widest flex items-center gap-2 group cursor-pointer"
               >
                 <span>Submit Inquiry</span>
                 <span className="material-symbols-outlined text-base group-hover:translate-x-1 transition-transform">

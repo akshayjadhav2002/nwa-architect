@@ -221,6 +221,7 @@ export function App() {
   const handleSubmitApplication = (appData: {
     candidateName: string;
     email: string;
+    phone?: string;
     position: string;
     portfolioUrl: string;
     coverLetter: string;
@@ -275,6 +276,7 @@ export function App() {
       appliedDate: new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
       status: 'New',
       email: appData.email,
+      phone: appData.phone || '',
       portfolioUrl: appData.portfolioUrl,
       avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
       experienceSummary: expSummary,
@@ -310,12 +312,14 @@ export function App() {
   const handleSubmitInquiry = (inquiry: {
     name: string;
     email: string;
+    phone: string;
     projectType: string;
     message: string;
   }) => {
     const newInquiry: ContactInquiry = {
       id: `inq-${Date.now()}`,
       ...inquiry,
+      status: 'New',
       createdAt: new Date().toISOString().split('T')[0],
     };
     setInquiries([newInquiry, ...inquiries]);
@@ -324,6 +328,16 @@ export function App() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(inquiry),
+    }).catch(() => {});
+  };
+
+  const handleUpdateInquiry = (updated: ContactInquiry) => {
+    setInquiries(inquiries.map((inq) => (inq.id === updated.id ? updated : inq)));
+
+    fetch(`/api/inquiries/${updated.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updated),
     }).catch(() => {});
   };
 
@@ -448,6 +462,7 @@ export function App() {
             {adminView === 'inquiries' && (
               <AdminInquiries
                 inquiries={inquiries}
+                onUpdateInquiry={handleUpdateInquiry}
                 onDeleteInquiry={handleDeleteInquiry}
                 onNavigate={(v) => setAdminView(v)}
               />

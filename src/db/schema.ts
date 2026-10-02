@@ -1,4 +1,4 @@
-import { pgTable, text, integer, timestamp, jsonb, serial } from 'drizzle-orm/pg-core';
+import { pgTable, text, integer, timestamp, jsonb, serial, boolean } from 'drizzle-orm/pg-core';
 import type { StudioProfile, TeamMember } from '../types.ts';
 
 export const users = pgTable('users', {
@@ -17,6 +17,7 @@ export const projects = pgTable('projects', {
   description: text('description').notNull(),
   imageUrl: text('image_url').notNull(),
   status: text('status').notNull().default('In Progress'),
+  isFeatured: boolean('is_featured').notNull().default(false),
   lastEdited: text('last_edited').default('Just now'),
   editedBy: text('edited_by').default('Admin'),
   createdAt: timestamp('created_at').defaultNow(),
@@ -41,6 +42,7 @@ export const applications = pgTable('applications', {
   appliedDate: text('applied_date').notNull(),
   status: text('status').notNull().default('New'),
   email: text('email').notNull(),
+  phone: text('phone').default(''),
   portfolioUrl: text('portfolio_url').default(''),
   avatarUrl: text('avatar_url'),
   experienceSummary: jsonb('experience_summary').$type<Array<{
@@ -62,8 +64,10 @@ export const contactInquiries = pgTable('contact_inquiries', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
   email: text('email').notNull(),
+  phone: text('phone').default(''),
   projectType: text('project_type').notNull(),
   message: text('message').notNull(),
+  status: text('status').notNull().default('New'),
   createdAt: timestamp('created_at').defaultNow(),
 });
 

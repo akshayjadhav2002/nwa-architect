@@ -149,18 +149,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </h3>
 
           <div className="divide-y divide-[#747878]/15">
-            {projects.slice(0, 4).map((project, idx) => (
+            {projects.slice(0, 4).map((project) => (
               <div
                 key={project.id}
                 onClick={() => onNavigate('projects')}
                 className="flex justify-between items-center py-6 group cursor-pointer hover:bg-[#edeeef]/50 transition-colors px-4 -mx-4"
               >
-                <div className="flex items-center gap-6">
-                  <span className="font-serif text-2xl text-[#444748]/50 w-8 group-hover:text-[#a33e00] transition-colors">
-                    0{idx + 1}
-                  </span>
+                <div className="flex items-center gap-4">
                   <div>
-                    <h4 className="font-semibold text-lg text-[#000000]">
+                    <h4 className="font-semibold text-lg text-[#000000] group-hover:text-[#a33e00] transition-colors">
                       {project.title}
                     </h4>
                     <p className="label-caps text-[#444748] text-[10px] mt-1 uppercase">
@@ -170,8 +167,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
 
                 <div className="hidden sm:block text-right text-xs text-[#444748]">
-                  Last edited {project.lastEdited}<br />
-                  <span className="text-[10px] opacity-70">by {project.editedBy}</span>
+                  Last edited {project.lastEdited}
                 </div>
               </div>
             ))}
