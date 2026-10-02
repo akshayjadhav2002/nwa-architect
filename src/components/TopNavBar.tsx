@@ -71,16 +71,6 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({ activeTab, onNavigate }) =
           </button>
         </nav>
 
-        {/* Admin Button */}
-        <div className="hidden md:flex items-center">
-          <button
-            onClick={() => onNavigate('admin')}
-            className="bg-[#000000] text-white label-caps px-6 py-2.5 hover:bg-[#a33e00] transition-colors duration-300 uppercase tracking-widest"
-          >
-            Admin
-          </button>
-        </div>
-
         {/* Mobile Menu Toggle */}
         <button
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -139,15 +129,6 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({ activeTab, onNavigate }) =
             }`}
           >
             Contact
-          </button>
-          <button
-            onClick={() => {
-              onNavigate('admin');
-              setMobileMenuOpen(false);
-            }}
-            className="bg-[#000000] text-white label-caps py-3 text-center uppercase tracking-widest mt-2"
-          >
-            Admin Portal
           </button>
         </div>
       )}

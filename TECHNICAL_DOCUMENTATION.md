@@ -359,7 +359,45 @@ All API endpoints return JSON and are hosted under the `/api` prefix on port 300
   - Automatic status transition to `'Contacted'` when clicking "Reply" (email) or "Call" (mobile).
   - Added status filter tabs (**All**, **New**, **Contacted**) in the inquiries list sidebar.
 
+- **cPanel & Production Deployment Plan**:
+  - Documented full-stack deployment instructions for hosting on cPanel using Phusion Passenger / "Setup Node.js App", static SPA routing with `.htaccess`, PostgreSQL database provisioning, environment variables configuration, and SMTP mail delivery.
+
+- **Admin Authentication Streamlining (Google Sign-In Removal)**:
+  - Removed the third-party Google OAuth sign-in button and associated Firebase client handlers from `AdminLoginModal.tsx`.
+  - Streamlined the authentication modal strictly to secure Studio Credential verification (`/api/auth/login`) with persistent session management.
+
+- **Discreet `/admin` URL Routing & Header Simplification**:
+  - Removed the visible "Admin" button from the public header (`TopNavBar.tsx`) in both desktop and mobile layouts for a pristine, minimalist architectural portfolio aesthetic.
+  - Implemented direct URL routing in `App.tsx` where typing `/admin` (or `#admin`) automatically activates the Admin portal (or triggers the Studio Sign-In modal if unauthenticated).
+  - Integrated browser history synchronization (`pushState`) on login, logout, and modal close.
+
 Whenever a new feature is implemented, a data model is altered, or a UI component is modified:
 1. Update this `TECHNICAL_DOCUMENTATION.md` file reflecting the updated schema, routes, or component behavior.
 2. Ensure database schema updates are reflected in `src/db/schema.ts` and repository helpers.
 3. Keep `types.ts` strictly synchronized with all DB entities.
+
+---
+
+## 7. cPanel & Production Deployment Guide
+
+This full-stack application (React 18 + Node.js Express + PostgreSQL + Nodemailer) can be deployed seamlessly to any standard cPanel hosting environment.
+
+### Deployment Overview
+- **Build Output**: `dist/` containing compiled static assets + `dist/server.cjs` (bundled Express backend).
+- **Runtime**: Node.js 18.x, 20.x, or 22.x via cPanel's **"Setup Node.js App"** (CloudLinux / Phusion Passenger) or reverse proxy.
+- **Database**: PostgreSQL (cPanel PostgreSQL or external PostgreSQL / Cloud SQL / Supabase / Neon).
+- **Email**: Built-in cPanel SMTP or Gmail SMTP.
+
+### Step-by-Step Procedure
+1. **Local Build**: Run `npm run build` to generate `dist/`.
+2. **File Packaging**: Zip `dist/`, `package.json`, `.env.example` (renamed to `.env`), and `uploads/`.
+3. **Database Creation**: Create a PostgreSQL database & user in cPanel -> PostgreSQL Databases (or use existing Cloud SQL connection string).
+4. **Node.js Setup in cPanel**:
+   - Go to **cPanel > Setup Node.js App** -> **Create Application**.
+   - Select Node.js 20.x, Application Mode: `Production`.
+   - Set Application Root (e.g. `nwa_app`), Application URL (`yourdomain.com`), and Application Startup File (`dist/server.cjs`).
+5. **Upload & Extract**: Upload files via cPanel File Manager to the application directory.
+6. **Install Dependencies**: Click **Run NPM Install** in the Node.js App manager.
+7. **Environment Variables**: Add `DATABASE_URL`, `INQUIRY_NOTIFICATION_EMAIL`, `GMAIL_USER`, and `GMAIL_APP_PASSWORD` in the Node.js App settings.
+8. **SSL Certificate**: Enable AutoSSL / Let's Encrypt in cPanel SSL/TLS Manager.
+

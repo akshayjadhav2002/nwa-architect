@@ -82,6 +82,34 @@ export function App() {
     return () => unsubscribe();
   }, []);
 
+  // Sync /admin URL path and hash changes with Admin Mode / Login Modal
+  useEffect(() => {
+    const handleUrlChange = () => {
+      const pathname = window.location.pathname.toLowerCase();
+      const hash = window.location.hash.toLowerCase();
+      const isAdminRoute = pathname === '/admin' || pathname.startsWith('/admin/') || hash === '#admin';
+
+      if (isAdminRoute) {
+        const isAuth = sessionStorage.getItem('nwa_admin_auth') === 'true';
+        if (isAuth) {
+          setIsAdminMode(true);
+          setIsLoginModalOpen(false);
+        } else {
+          setIsAdminMode(false);
+          setIsLoginModalOpen(true);
+        }
+      }
+    };
+
+    handleUrlChange();
+    window.addEventListener('popstate', handleUrlChange);
+    window.addEventListener('hashchange', handleUrlChange);
+    return () => {
+      window.removeEventListener('popstate', handleUrlChange);
+      window.removeEventListener('hashchange', handleUrlChange);
+    };
+  }, []);
+
   // Fetch initial data from server REST API if available
   useEffect(() => {
     fetch('/api/projects')
@@ -116,12 +144,17 @@ export function App() {
       if (isAuthenticated) {
         setIsAdminMode(true);
         setAdminView('dashboard');
+        window.history.pushState(null, '', '/admin');
       } else {
         setIsLoginModalOpen(true);
+        window.history.pushState(null, '', '/admin');
       }
     } else {
       setIsAdminMode(false);
       setActiveTab(tab);
+      if (window.location.pathname === '/admin' || window.location.hash === '#admin') {
+        window.history.pushState(null, '', '/');
+      }
     }
   };
 
@@ -136,6 +169,7 @@ export function App() {
     setIsLoginModalOpen(false);
     setIsAdminMode(true);
     setAdminView('dashboard');
+    window.history.pushState(null, '', '/admin');
   };
 
   const handleLogout = () => {
@@ -146,6 +180,7 @@ export function App() {
     sessionStorage.removeItem('nwa_admin_user_email');
     auth.signOut().catch(() => {});
     setIsAdminMode(false);
+    window.history.pushState(null, '', '/');
   };
 
   // Projects Handlers
@@ -510,7 +545,12 @@ export function App() {
       {/* Admin Login Modal Flow */}
       <AdminLoginModal
         isOpen={isLoginModalOpen}
-        onClose={() => setIsLoginModalOpen(false)}
+        onClose={() => {
+          setIsLoginModalOpen(false);
+          if (window.location.pathname === '/admin' || window.location.hash === '#admin') {
+            window.history.pushState(null, '', '/');
+          }
+        }}
         onLoginSuccess={handleLoginSuccess}
       />
     </div>
